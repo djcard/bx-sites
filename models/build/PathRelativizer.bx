@@ -34,6 +34,69 @@ class {
 	}
 
 	/**
+	 * Resolves a user-supplied path (a CLI flag, a deploy config value)
+	 * the way a shell user expects: absolute paths are kept, a leading
+	 * "~/" means the user's home folder, and anything else is relative to
+	 * `basePath` - never to this module's own folder, which is what a bare
+	 * relative `fileExists()` resolves against.
+	 *
+	 * @basePath Absolute directory relative values resolve against (usually the project root)
+	 * @path The raw path as the user wrote it
+	 *
+	 * @return The resolved, normalized path ("" when `path` is empty)
+	 */
+	string function resolve( required string basePath, required string path ) {
+		var value = trim( arguments.path )
+		if ( !len( value ) ) {
+			return value
+		}
+		if ( value == "~" || reFind( "^~[\\/]", value ) ) {
+			value = getSystemSetting( "user.home", "" ) & value.mid( 2, value.len() )
+		}
+		return createObject( "java", "java.io.File" )
+			.init( arguments.basePath )
+			.toPath()
+			.resolve( value )
+			.normalize()
+			.toString()
+	}
+
+	/**
+	 * Whether `filePath`, once canonicalized (symlinks resolved, `..`
+	 * collapsed), sits inside `dir` or is `dir` itself. Compares path
+	 * components, not strings, so it holds on Windows (backslashes,
+	 * case-insensitive drives) and `/docs2` never counts as inside `/docs`.
+	 *
+	 * @filePath The candidate path, not yet canonicalized
+	 * @dir The directory it must sit inside
+	 */
+	boolean function isWithin( required string filePath, required string dir ) {
+		var file = createObject( "java", "java.io.File" )
+		var candidate = file.init( arguments.filePath ).getCanonicalFile().toPath()
+		var container = file.init( arguments.dir ).getCanonicalFile().toPath()
+		return candidate.startsWith( container )
+	}
+
+	/**
+	 * Whether `path` is `basePath` or sits below it, compared as plain
+	 * strings (no filesystem access): separators normalized, a whole
+	 * folder name at the boundary (`/docs2` is not under `/docs`), and
+	 * case-insensitive for Windows drive paths.
+	 *
+	 * @basePath Absolute base directory
+	 * @path Absolute path to test
+	 */
+	boolean function isUnder( required string basePath, required string path ) {
+		var normalizedBase = normalize( arguments.basePath ).reReplace( "[\\/]+$", "" )
+		var normalizedPath = normalize( arguments.path ).reReplace( "[\\/]+$", "" )
+		if ( reFind( "^[A-Za-z]:", normalizedBase ) ) {
+			normalizedBase = lCase( normalizedBase )
+			normalizedPath = lCase( normalizedPath )
+		}
+		return normalizedPath == normalizedBase || normalizedPath.startsWith( normalizedBase & "/" )
+	}
+
+	/**
 	 * `filePath`'s own path relative to `basePath`, both normalized first
 	 * so a Windows-style backslash and a Unix-style forward slash compare
 	 * equal. Falls back to the normalized `filePath` itself (leading
@@ -48,9 +111,8 @@ class {
 		var normalizedBase = normalize( arguments.basePath ).reReplace( "[\\\/]+$", "" )
 		var normalizedPath = normalize( arguments.filePath )
 
-		if ( normalizedPath.startsWith( normalizedBase ) ) {
-			var relativePath = normalizedPath.right( normalizedPath.len() - normalizedBase.len() )
-			return relativePath.reReplace( "^[\/]+", "" )
+		if ( isUnder( normalizedBase, normalizedPath ) ) {
+			return normalizedPath.mid( normalizedBase.len() + 1, normalizedPath.len() ).reReplace( "^[\/]+", "" )
 		}
 
 		return normalizedPath.reReplace( "^[\/]+", "" )

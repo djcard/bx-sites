@@ -114,13 +114,14 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 		var gzippedByPath = {}
 		var hashByPath = {}
 		for ( var filePath in files ) {
-			var relativePath = "/" & filePath.replace( siteDir, "", "one" ).reReplace( "^[\/]+", "" ).replace( char( 92 ), "/", "all" )
+			var relativePath = "/" & new "models.build.PathRelativizer@bxsites"().relativeTo( siteDir, filePath )
 			var gzipped = gzip( fileReadBinary( filePath ) )
 			gzippedByPath[ relativePath ] = gzipped
 			hashByPath[ relativePath ] = sha256Hex( gzipped )
 		}
 
-		var accessToken = variables.auth.getAccessToken( serviceAccountKeyPath, variables.SCOPE ).accessToken
+		var keyPath = new "models.build.PathRelativizer@bxsites"().resolve( arguments.context.projectRoot ?: getSystemSetting( "user.dir", "" ), serviceAccountKeyPath )
+		var accessToken = variables.auth.getAccessToken( keyPath, variables.SCOPE ).accessToken
 
 		var versionName = createVersion( siteId, accessToken )
 		var populated = populateFiles( versionName, hashByPath, accessToken )

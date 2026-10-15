@@ -40,7 +40,7 @@
  * stated there too, including what it does when `rsync` genuinely isn't on
  * `PATH` (this environment's own real case) versus when it is.
  *
- * @config { host (required), username (required), remotePath (required - a remote DIRECTORY), port (default 22), identityFile (optional, path to an SSH private key for `-i`), sshOptions (optional, raw extra string appended to the `-e "ssh ..."` sub-command, e.g. "-o StrictHostKeyChecking=no"), deleteExtraneous (optional boolean, default true - passes rsync's own `--delete`, removing remote files no longer present locally) }
+ * @config { host (required), username (required), remotePath (required - a remote DIRECTORY), port (default 22), identityFile (optional, path to an SSH private key for `-i`), sshOptions (optional, raw extra string appended to the `-e "ssh ..."` sub-command, e.g. "-o StrictHostKeyChecking=no"), deleteExtraneous (optional boolean, default false - true passes rsync's own `--delete`, removing remote files no longer present locally) }
  */
 class implements="models.deploy.IDeploymentTarget@bxsites" {
 
@@ -55,7 +55,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 		// Validates host/username/remotePath and builds the full argv before
 		// ever touching the filesystem/network, same validate-first order
 		// LocalTarget.bx/BaseFtpTarget.bx already use.
-		var cmd = buildRsyncCommand( arguments.config, siteDir )
+		var cmd = buildRsyncCommand( arguments.config, siteDir, arguments.context.projectRoot ?: "" )
 
 		if ( !directoryExists( siteDir ) ) {
 			throw(
@@ -101,7 +101,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 	 *
 	 * @return Full argv, `rsync` included as element 1
 	 */
-	array function buildRsyncCommand( required struct config, required string siteDir ) {
+	array function buildRsyncCommand( required struct config, required string siteDir, string projectRoot = "" ) {
 		var host = trim( arguments.config.host ?: "" )
 		var username = trim( arguments.config.username ?: "" )
 		var remotePath = trim( arguments.config.remotePath ?: "" )
@@ -113,10 +113,23 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 			)
 		}
 
+		// The whole server or a home folder is never a site directory - syncing
+		// into one scatters the site there (and with --delete, wipes it)
+		var normalizedRemote = remotePath.reReplace( "[\/]+$", "" )
+		if ( !len( normalizedRemote ) || normalizedRemote == "~" || normalizedRemote == "." ) {
+			throw(
+				type    = "BxSites.InvalidDeployConfig",
+				message = "deploy target 'rsync' refuses remotePath [#remotePath#] - point it at the site's own folder, e.g. /var/www/html"
+			)
+		}
+
 		var port = arguments.config.port ?: 22
 		var identityFile = trim( arguments.config.identityFile ?: "" )
+		if ( len( identityFile ) && len( arguments.projectRoot ) ) {
+			identityFile = new "models.build.PathRelativizer@bxsites"().resolve( arguments.projectRoot, identityFile )
+		}
 		var sshOptions = trim( arguments.config.sshOptions ?: "" )
-		var deleteExtraneous = arguments.config.deleteExtraneous ?: true
+		var deleteExtraneous = arguments.config.deleteExtraneous ?: false
 
 		var sshCmd = "ssh -p #port#"
 		if ( len( identityFile ) ) {
