@@ -20,8 +20,17 @@ class {
 			throw( type = "BxSites.MissingProjectRoot", message = "`serve` requires a project root" )
 		}
 
-		var port = isNumeric( arguments.options.port ?: "" ) ? val( arguments.options.port ) : 8080
-		var host = len( trim( arguments.options.host ?: "" ) ) ? arguments.options.host : "127.0.0.1"
+		var config = new "models.config.ConfigLoader@bxsites"().load( projectRoot )
+		var port = isNumeric( arguments.options.port ?: "" ) 
+			? val( arguments.options.port ) 
+			: config.keyExists("server.port") 
+				? val( config.server.port)
+				: 8080
+		var host = len( trim( arguments.options.host ?: "" ) ) 
+		? arguments.options.host 
+		: config.keyExists("server.host") 
+			? trim( config.server.host ) 
+			: "127.0.0.1"
 
 		var devServer = new "models.build.DevServer@bxsites"()
 		var started = devServer.start( projectRoot, port, host )
