@@ -204,11 +204,31 @@ class {
 
 		// Prepare the site output directory. If it exists, delete it first to ensure a clean build.
 		var siteDir = expandpath(root & "/site")
+
+		var savedServerJson='';
+		
+
 		if ( directoryExists( siteDir ) ) {
-			directoryDelete( siteDir, true )
+			if(fileExists(siteDir & "/server.json")){
+				println("I NEED TO SAVE THE JSON!")
+				savedServerJson=fileRead(siteDir & "/server.json");
+			}
+			var allFiles=directorylist(siteDir);
+			println(allFiles)
+			allFiles.each((item)=>{
+				if(fileExists(item)){
+					fileDelete(item);
+				} else if (directoryExists(item)){
+					directoryDelete(item, true);
+				}
+			})
+			//directoryDelete( siteDir, true )
 		}
 		directoryCreate( siteDir, true, true )
 
+		if(savedServerJson.len()){
+			fileWrite(siteDir & "/server.json",savedServerJson);
+		}
 		// Discover all version names within the project's documentation.
 		var versionNames = variables.versionsDiscoverer.discover( docsDir )
 		// `versions.default` (empty, the common case, changes nothing below)
