@@ -53,11 +53,17 @@ class {
 	 * @options { projectRoot (required), entry (optional, a deployments/* entry name - NOT `name`, which collides with a reserved top-level BoxLang CLI flag and crashes the runtime before this class is even reached), target (optional; when neither entry nor target is given, every deployments/* entry is deployed instead), destination, branch, remote, message, verbose (optional, prints a progress line per target) }
 	 */
 	struct function run( struct options = {} ) {
-		var projectRoot = trim( arguments.options.projectRoot ?: "" )
+		var projectRoot = trim( arguments.options.projectRoot ?: "" );
+
 		if ( !len( projectRoot ) ) {
 			throw( type = "BxSites.MissingProjectRoot", message = "`deploy` requires a project root" )
 		}
 		var root = projectRoot.reReplace( "[\\\/]+$", "" )
+		var configLoader = new "models.config.ConfigLoader@bxsites"()
+		var siteConfig = configLoader.load( root );
+
+		var deployRoot = expandPath(root & (siteConfig.source.len() ? "/" & siteConfig.source : ""));
+
 		var verbose = arguments.options.verbose ?: false
 
 		var entryName = trim( arguments.options.entry ?: "" )
@@ -74,7 +80,7 @@ class {
 
 		if ( deployAllMode ) {
 			var resolver = new "models.deploy.DeploymentConfigResolver@bxsites"()
-			var resolved = resolver.resolve( root )
+			var resolved = resolver.resolve( deployRoot )
 
 			if ( resolved.errors.len() ) {
 				throw(
@@ -91,7 +97,7 @@ class {
 			allEntries = resolved.entries
 		} else if ( len( entryName ) ) {
 			var resolver = new "models.deploy.DeploymentConfigResolver@bxsites"()
-			var entry = resolver.getEntry( root, entryName )
+			var entry = resolver.getEntry( deployRoot, entryName )
 			target = entry.target
 			config = entry.config
 		} else {
@@ -125,7 +131,7 @@ class {
 			println( "Built #buildResult.pageCount# page(s) to #buildResult.siteDir#" )
 		}
 
-		var context = { projectRoot : root, siteDir : buildResult.siteDir, config : siteConfig }
+		var context = { projectRoot : root, siteDir : buildResult.siteDir, config : siteConfig, deployRoot : deployRoot }
 
 		if ( deployAllMode ) {
 			return deployAllEntries( allEntries, context, buildResult, verbose )
