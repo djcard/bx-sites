@@ -23,12 +23,12 @@ class {
 		var config = new "models.config.ConfigLoader@bxsites"().load( projectRoot )
 		var port = isNumeric( arguments.options.port ?: "" ) 
 			? val( arguments.options.port ) 
-			: config.keyExists("server.port") 
+			: config.keyExists("server") && config.server.keyExists("port") 
 				? val( config.server.port)
 				: 8080
 		var host = len( trim( arguments.options.host ?: "" ) ) 
 		? arguments.options.host 
-		: config.keyExists("server.host") 
+		: config.keyExists("server") && config.server.keyExists("host") 
 			? trim( config.server.host ) 
 			: "127.0.0.1"
 
