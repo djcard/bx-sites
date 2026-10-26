@@ -205,14 +205,14 @@ Left unset, `docs/` then `src/` are auto-detected; if neither exists on disk
 either, the build fails loudly rather than guessing. `bxSites new` always
 writes this explicitly, so a scaffolded project is never ambiguous. See
 [Content Source](guides/content-source.md) for the full picture, including
-`.theme`/`.themes` overrides living inside this folder and the
+`.theme`/`.themes`/`.overrides` folders living inside this folder and the
 [Multi-Domain Monorepo](guides/multi-domain.md) guide for running several
 independent project roots out of one repository.
 
 ## `exclude`
 
 Extra file/folder names to leave out of the build, on top of the traditional
-ones bxSites always excludes (`.git`, `.github`, `node_modules`,
+ones bxSites always excludes (any dot-prefixed folder or file such as `.git` or `.claude`, `node_modules`,
 `boxlang_modules`, `site`, `.theme`, `.themes`, and this project's own config
 file). Matched the same way - a bare name at the root of `source`, or a
 name anywhere under it via a leading `/`-free path segment. Mostly useful
@@ -273,11 +273,38 @@ for a `src/`-based project - see [`docs/` or `src/`](getting-started.md#add-page
 and it's copied through byte-for-byte instead of the generated one, on every
 build - the `robots` key above is ignored entirely once this file exists.
 
+## `layouts`
+
+Implicit layouts: assign a layout to every page whose path matches a glob,
+without repeating `layout:` in each page's frontmatter. Rules are tried in
+order and the first match wins; a page's own `layout:` frontmatter always
+wins over a rule.
+
+```yaml title="bxsites.yaml"
+layouts:
+  - layout: landing
+    match: ["marketing/**", "pricing.md"]
+  - layout: post
+    match: "blog/posts/**"
+```
+
+- `layout` - a bare template name such as `landing` (letters, digits, `-`,
+  `_`)
+- `match` - a glob, or a list of globs, matched against the page's path
+  relative to the content root
+
+Defaults to no rules. See
+[Implicit layouts](guides/themes.md#implicit-layouts) for the glob syntax.
+
 ## `theme`
 
 - `theme.name` - one of the built-in themes (`bootstrap`, `material`,
-  `tailwind`), or the name of a custom theme you provide via a `.theme/`
-  folder inside the content root (see [Themes](guides/themes.md))
+  `tailwind`, ...), or the name of an installed theme, or any name when you
+  provide a complete theme via a `.theme/` folder inside the content root
+  (see [Themes](guides/themes.md)). It must be a slug: lowercase letters,
+  digits and hyphens, the same value BoxLang's `slugify()` returns. A
+  project's changes to a theme live in `.overrides/<theme.name>/` (see
+  [Project overrides](guides/themes.md#project-overrides))
 - `theme.logo` - path/URL to an image shown next to the site name in the
   header brand mark (in place of the default "⚡" glyph) - a relative path
   (e.g. `"assets/logo.svg"`, resolved against `docs/assets/`) is prefixed
@@ -448,6 +475,32 @@ build - the `robots` key above is ignored entirely once this file exists.
       [theme.options]
       accentColor = "#2563eb"
       accentColorDark = "#60a5fa"
+      ```
+
+  - `theme.options.navAccentLine` - `true` (the default) draws a thin
+    vertical line alongside a nested sidebar nav section, visually tying a
+    section's children to their parent. `false` turns it off.
+  - `theme.options.navAccentLineColor` - a hex color (3- or 6-digit)
+    overriding the nav accent line's own color. Leaving it unset falls back
+    to `theme.options.accentColor`/`accentColorDark` when set, or the
+    theme's own native accent color otherwise - only relevant when
+    `navAccentLine` is on.
+
+    === "YAML"
+        ```yaml
+        theme: { options: { navAccentLine: true, navAccentLineColor: "#2563eb" } }
+        ```
+
+    === "JSON"
+        ```json
+        { "theme": { "options": { "navAccentLine": true, "navAccentLineColor": "#2563eb" } } }
+        ```
+
+    === "TOML"
+      ```toml
+      [theme.options]
+      navAccentLine = true
+      navAccentLineColor = "#2563eb"
       ```
 
 ## `search`
@@ -939,6 +992,13 @@ site-wide image. Pure `java.awt`/`javax.imageio` under the hood (part of
 any JVM BoxLang runs on), so this needs no headless browser, external
 service, or network access at build time.
 
+Each card is a dark, brand-tinted background with a soft glow, the site
+logo and name, a section chip (the page's first folder), the page title, the
+page's description and its URL, with an accent gradient bar along the
+bottom. The accent colors come from `theme.options.accentColor` and
+`accentColorDark`, and the logo from `theme.logo` when it is a PNG, JPG or
+GIF. Tune the card with [`ogCard`](#ogcard).
+
 === "YAML"
     ```yaml title="bxsites.yaml"
     generateOgImages: true
@@ -953,6 +1013,52 @@ service, or network access at build time.
     ```toml title="bxsites.toml"
     generateOgImages = true
     ```
+
+### `ogCard`
+
+Optional object that tunes the cards `generateOgImages` renders. Every key
+is optional.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `background` | `#0b161b` | Card background (`#RGB` or `#RRGGBB`) |
+| `accent`, `accentEnd` | `theme.options.accentColor`, `accentColorDark`, else `#00ff78` and `#00dbff` | Start and end of the accent gradient (bar, rule, glow, rings, chip) |
+| `text`, `muted` | `#ffffff`, `#a0b8b5` | Title color, and the site name, description and URL color |
+| `logo` | `theme.logo` | A PNG, JPG or GIF in the source folder, or an absolute path. SVG cannot be drawn, so a card without a raster logo shows only the site name |
+| `font` | JVM `SansSerif` | A TTF or OTF in the source folder, or an absolute path, used for all text but the URL |
+| `description` | `true` | Draw the page description under the title |
+| `url` | `true` | Draw the page URL (from `baseURL`) bottom left |
+| `section` | `true` | Draw the section chip (pages in a subfolder only) |
+
+=== "YAML"
+    ```yaml title="bxsites.yaml"
+    generateOgImages: true
+    ogCard:
+      background: '#06141a'
+      logo: assets/og-logo.png
+      description: true
+    ```
+
+=== "JSON"
+    ```json title="bxsites.json"
+    {
+    	"generateOgImages": true,
+    	"ogCard": { "background": "#06141a", "logo": "assets/og-logo.png", "description": true }
+    }
+    ```
+
+=== "TOML"
+    ```toml title="bxsites.toml"
+    generateOgImages = true
+
+    [ogCard]
+    background = "#06141a"
+    logo = "assets/og-logo.png"
+    description = true
+    ```
+
+A page's own frontmatter `ogImage` still wins, and its `title` and
+`description` frontmatter are what the card shows.
 
 ## `extraCss` / `extraJs`
 
@@ -1035,17 +1141,23 @@ fresh `bxSites new` project needs to touch none of this. See
 what deliberately isn't covered (AVIF, animated GIFs, SVGs).
 
 - `assets.fingerprint` - `true` (the default). Content-hash-names every
-  generated image variant, CSS/JS bundle, and the active theme's own
-  `assets/style.css` (e.g. `screenshot-800w.a3f9c2e1.webp`,
-  `bundle.a3f9c2e1.css`, `style.a3f9c2e1.css`) so they can be served with
-  safe, far-future cache headers - a project's build changes the file's own
-  name only when its content actually changes. This means a theme update -
-  a built-in theme upgrade, or a custom author editing their own theme's
-  CSS - automatically busts every visitor's browser cache on the next
-  deploy, with no manual versioning step. Does not rename a project's own
-  original files under `docs/assets/` - only pipeline-generated output gets
-  fingerprinted, so anything else that references an asset by its plain
-  filename (a `::: file` download card, a raw markdown link) keeps working
+  generated image variant, CSS/JS bundle, and any top-level CSS/JS file
+  directly inside the active theme's own `assets/` folder or this module's
+  own shared `assets/` (e.g. `screenshot-800w.a3f9c2e1.webp`,
+  `bundle.a3f9c2e1.css`, `style.a3f9c2e1.css`, `copy-code.a3f9c2e1.js`) so
+  they can be served with safe, far-future cache headers - a project's build
+  changes a file's own name only when its content actually changes. This
+  means a theme update - a built-in theme upgrade, or a custom author
+  editing their own theme's CSS/JS - automatically busts every visitor's
+  browser cache on the next deploy, with no manual versioning step, as long
+  as the theme's own `layout.bxm` links that file through
+  `themeAssetUrl()`/`moduleAssetUrl()` rather than a hardcoded path - see
+  [Themes](guides/themes.md#writing-a-theme-from-scratch). Does not rename a
+  project's own original files under `docs/assets/`, or anything inside a
+  subdirectory of a theme's own `assets/` - only pipeline-generated output
+  and a theme's own top-level files get fingerprinted, so anything else that
+  references an asset by its plain filename (a `::: file` download card, a
+  raw markdown link, a theme's `@font-face`/`@import`) keeps working
   unchanged.
 - `assets.bundle` - `true` (the default). Concatenates `extraCss`/`extraJs`
   into one fingerprinted file each - pure BoxLang/JVM, no Node/esbuild
@@ -1142,8 +1254,10 @@ referenced OpenAPI/Swagger spec (JSON or YAML). See
 
 `false` (the default) - no lightbox widget shipped at all. `true` loads a
 small click-to-enlarge lightbox for every `::: image-gallery` content
-block. See [Content Blocks](guides/content-blocks.md#image-gallery) for
-the syntax.
+block and for every other image in page content (opt an image out with
+`class="no-zoom"`). Prev and next move through all the zoomable images on
+the page. See [Images](guides/images.md#click-to-enlarge) and
+[Content Blocks](guides/content-blocks.md#image-gallery).
 
 === "YAML"
     ```yaml title="bxsites.yaml"

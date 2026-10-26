@@ -64,7 +64,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 			)
 		}
 
-		var token = getSystemSetting( authTokenEnvVar, "" )
+		var token = getSystemSetting( authTokenEnvVar, "" ).trim()
 		if ( !len( token ) ) {
 			throw(
 				type    = "BxSites.MissingCredentials",
@@ -108,7 +108,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 	 * @return The zip archive's raw bytes
 	 */
 	binary function buildZipArchive( required string sourceDir ) {
-		var root = arguments.sourceDir.reReplace( "[\/]+$", "" )
+		var root = arguments.sourceDir.reReplace( "[\\\/]+$", "" )
 		var files = directoryList( root, true, "path" ).filter( function( path ) {
 			return !directoryExists( path )
 		} )
@@ -118,9 +118,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 
 		try {
 			for ( var filePath in files ) {
-				var relativePath = filePath.replace( root, "", "one" )
-					.reReplace( "^[\/]+", "" )
-					.replace( char( 92 ), "/", "all" )
+				var relativePath = new "models.build.PathRelativizer@bxsites"().relativeTo( root, filePath )
 				var entry = createObject( "java", "java.util.zip.ZipEntry" ).init( relativePath )
 				zipStream.putNextEntry( entry )
 				zipStream.write( readFileBytes( filePath ) )

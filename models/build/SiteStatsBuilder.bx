@@ -31,7 +31,7 @@ class {
 	 * @return { pageCount, wordCount, avgWordsPerPage, treeBreakdown: [ { label, pageCount } ], versions: [ names ], locales: [ codes ], blog: { present, posts, categories, authors, years }, tagCount, searchIndex: { enabled, entryCount, fileSizeBytes }, siteFileCount, siteSizeBytes }
 	 */
 	struct function build( required string projectRoot ) {
-		var root = arguments.projectRoot.reReplace( "[\/]+$", "" )
+		var root = arguments.projectRoot.reReplace( "[\\\/]+$", "" )
 		var siteDir = root & "/site"
 		var docsDir = variables.sourceDirResolver.resolveConfigured( root )
 
@@ -205,9 +205,7 @@ class {
 	 * @siteDir Absolute path to the built `site/`
 	 */
 	private string function toSiteRelative( required string filePath, required string siteDir ) {
-		return arguments.filePath
-			.reReplace( "^" & createObject( "java", "java.util.regex.Pattern" ).quote( arguments.siteDir ), "", "one" )
-			.reReplace( "^[\/]", "" )
+		return new "models.build.PathRelativizer@bxsites"().relativeTo( arguments.siteDir, arguments.filePath )
 	}
 
 	/**

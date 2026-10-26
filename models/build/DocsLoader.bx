@@ -45,7 +45,7 @@ class {
 	 * @return Array of page structs, sorted by [order] then [title]: { relativePath, sourcePath, urlPath, title, description, order, hidden, tags, redirectFrom, frontmatter, icon, summary, ogImage, layout, body }
 	 */
 	array function load( required string docsDir, array exclude = [] ) {
-		var dir = variables.pathRelativizer.normalize( arguments.docsDir ).reReplace( "[\/]+$", "" )
+		var dir = variables.pathRelativizer.normalize( arguments.docsDir ).reReplace( "[\\\/]+$", "" )
 
 		if ( !directoryExists( dir ) ) {
 			throw( type = "BxSites.DocsDirNotFound", message = "No docs/ directory found at [#dir#]" )
@@ -54,12 +54,15 @@ class {
 		var excludeNames = duplicate( static.defaultExcludes ).append( arguments.exclude, true )
 
 		var pages = directoryList( dir, true, "path", "*.md" )
-			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^assets[\/]" ) )
-			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^versions[\/]" ) )
-			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^i18n[\/]" ) )
-			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^blog[\/]" ) )
-			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^includes[\/]" ) )
+			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^assets[\\\/]" ) )
+			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^versions[\\\/]" ) )
+			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^i18n[\\\/]" ) )
+			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^blog[\\\/]" ) )
+			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFindNoCase( "^includes[\\\/]" ) )
 			.filter( path => !isExcluded( variables.pathRelativizer.relativeTo( dir, path ), excludeNames ) )
+			// Dot folders/files are tooling, never pages - with `source: .` that's
+			// .claude/skills/**/SKILL.md (skills:install), .cursor/, .agents/, ...
+			.filter( path => !variables.pathRelativizer.relativeTo( dir, path ).reFind( "(^|[\\\/])\." ) )
 			.map( path => loadFile( dir, path ) )
 
 		pages.sort( ( a, b ) => {
@@ -139,7 +142,7 @@ class {
 			if ( !len( trimmedName ) ) {
 				continue
 			}
-			if ( arguments.relativePath.reFindNoCase( "^" & reEscape( trimmedName ) & "([\/]|$)" ) ) {
+			if ( arguments.relativePath.reFindNoCase( "^" & reEscape( trimmedName ) & "([\\\/]|$)" ) ) {
 				return true
 			}
 		}

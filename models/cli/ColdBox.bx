@@ -34,7 +34,7 @@ class {
 		if ( !len( projectRoot ) ) {
 			throw( type = "BxSites.MissingProjectRoot", message = "`coldbox` requires a project root" )
 		}
-		var root = projectRoot.reReplace( "[\/]+$", "" )
+		var root = projectRoot.reReplace( "[\\\/]+$", "" )
 
 		var config = new "models.config.ConfigLoader@bxsites"().load( root )
 		var settings = config.coldbox ?: {}
@@ -320,11 +320,11 @@ class {
 			return arguments.projectRoot
 		}
 
-		if ( configured.startsWith( "/" ) || reFind( "^[A-Za-z]:[\/]", configured ) ) {
-			return configured.reReplace( "[\/]+$", "" )
+		if ( configured.startsWith( "/" ) || reFind( "^[A-Za-z]:[\\\/]", configured ) ) {
+			return configured.reReplace( "[\\\/]+$", "" )
 		}
 
-		return ( arguments.projectRoot & "/" & configured.reReplace( "^\./", "" ) ).reReplace( "[\/]+$", "" )
+		return ( arguments.projectRoot & "/" & configured.reReplace( "^\./", "" ) ).reReplace( "[\\\/]+$", "" )
 	}
 
 	/**

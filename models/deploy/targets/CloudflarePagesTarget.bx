@@ -72,17 +72,7 @@
 class implements="models.deploy.IDeploymentTarget@bxsites" {
 
 	variables.API_BASE = "https://api.cloudflare.com/client/v4"
-	variables.CONTENT_TYPES = {
-		"html" : "text/html", "htm" : "text/html", "css" : "text/css",
-		"js" : "application/javascript", "mjs" : "application/javascript",
-		"json" : "application/json", "xml" : "application/xml",
-		"svg" : "image/svg+xml", "png" : "image/png", "jpg" : "image/jpeg",
-		"jpeg" : "image/jpeg", "gif" : "image/gif", "ico" : "image/x-icon",
-		"webp" : "image/webp", "woff" : "font/woff", "woff2" : "font/woff2",
-		"ttf" : "font/ttf", "eot" : "application/vnd.ms-fontobject",
-		"txt" : "text/plain", "pdf" : "application/pdf",
-		"map" : "application/json", "webmanifest" : "application/manifest+json"
-	}
+	variables.contentTypes = new "models.deploy.ContentTypes@bxsites"()
 
 	/**
 	 * @config This target's own resolved config (see the class docblock's `@config` shape)
@@ -112,7 +102,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 			)
 		}
 
-		var apiToken = getSystemSetting( apiTokenEnvVar, "" )
+		var apiToken = getSystemSetting( apiTokenEnvVar, "" ).trim()
 		if ( !len( apiToken ) ) {
 			throw(
 				type    = "BxSites.MissingCredentials",
@@ -156,16 +146,14 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 	 * @return { relativePath (no leading slash) : hash }
 	 */
 	struct function hashSiteFiles( required string siteDir ) {
-		var root = arguments.siteDir.reReplace( "[\/]+$", "" )
+		var root = arguments.siteDir.reReplace( "[\\\/]+$", "" )
 		var files = directoryList( root, true, "path" ).filter( function( path ) {
 			return !directoryExists( path )
 		} )
 
 		var result = {}
 		for ( var filePath in files ) {
-			var relativePath = filePath.replace( root, "", "one" )
-				.reReplace( "^[\/]+", "" )
-				.replace( char( 92 ), "/", "all" )
+			var relativePath = new "models.build.PathRelativizer@bxsites"().relativeTo( root, filePath )
 			var extension = listLen( relativePath, "." ) > 1 ? listLast( relativePath, "." ) : ""
 			result[ relativePath ] = hashFileForCloudflare( readFileBytes( filePath ), extension )
 		}
@@ -254,7 +242,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 	 * @return [ { key, value, metadata: { contentType }, base64 : true } ]
 	 */
 	array function buildUploadPayload( required string siteDir, required struct relativePathToHash ) {
-		var root = arguments.siteDir.reReplace( "[\/]+$", "" )
+		var root = arguments.siteDir.reReplace( "[\\\/]+$", "" )
 		var payload = []
 		for ( var relativePath in arguments.relativePathToHash ) {
 			var bytes = readFileBytes( root & "/" & relativePath )
@@ -278,8 +266,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 	 * @return The guessed MIME type
 	 */
 	string function guessContentType( required string fileName ) {
-		var extension = listLen( arguments.fileName, "." ) > 1 ? lCase( listLast( arguments.fileName, "." ) ) : ""
-		return variables.CONTENT_TYPES[ extension ] ?: "application/octet-stream"
+		return variables.contentTypes.guess( arguments.fileName )
 	}
 
 	/**

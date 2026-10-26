@@ -158,7 +158,7 @@ class {
 	private struct function buildBxsitesConfig( required struct mkdocsConfig, required string sourceDir, required array warnings, required string sourceName ) {
 		var siteName = trim( arguments.mkdocsConfig.site_name ?: "" )
 		if ( !len( siteName ) ) {
-			siteName = listLast( arguments.sourceDir.reReplace( "[\/]+$", "" ), "/\" )
+			siteName = listLast( arguments.sourceDir.reReplace( "[\\\/]+$", "" ), "/\" )
 			arguments.warnings.append( "mkdocs.yml has no [site_name] - defaulted bxsites.yaml [name] to ""#siteName#""" )
 		}
 
@@ -353,7 +353,7 @@ class {
 		// Assets first, so every .md page's own rewriteAssetRefs() below can
 		// already tell "does this reference point at a file we're relocating".
 		for ( var sourcePath in allFiles ) {
-			var relativePath = sourcePath.reReplace( "^" & reEscape( arguments.mkdocsDocsDir ), "", "one" ).reReplace( "^[\/]", "" )
+			var relativePath = new "models.build.PathRelativizer@bxsites"().relativeTo( arguments.mkdocsDocsDir, sourcePath )
 			if ( relativePath.reFindNoCase( "\.md$" ) ) {
 				continue
 			}
@@ -367,11 +367,11 @@ class {
 		}
 
 		for ( var sourcePath in allFiles ) {
-			var relativePath = sourcePath.reReplace( "^" & reEscape( arguments.mkdocsDocsDir ), "", "one" ).reReplace( "^[\/]", "" )
+			var relativePath = new "models.build.PathRelativizer@bxsites"().relativeTo( arguments.mkdocsDocsDir, sourcePath )
 			if ( !relativePath.reFindNoCase( "\.md$" ) ) {
 				continue
 			}
-			var pageDir = getDirectoryFromPath( relativePath ).reReplace( "[\/]$", "" )
+			var pageDir = getDirectoryFromPath( relativePath ).reReplace( "[\\\/]$", "" )
 			if ( pageDir == "." ) {
 				pageDir = ""
 			}
@@ -461,15 +461,6 @@ class {
 	 */
 	private string function quoteReplacement( required string text ) {
 		return createObject( "java", "java.util.regex.Matcher" ).quoteReplacement( arguments.text )
-	}
-
-	/**
-	 * @text Literal text to embed in a regular expression
-	 *
-	 * @return text with every regex metacharacter escaped
-	 */
-	private string function reEscape( required string text ) {
-		return createObject( "java", "java.util.regex.Pattern" ).quote( arguments.text )
 	}
 
 }

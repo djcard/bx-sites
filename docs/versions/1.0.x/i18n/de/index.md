@@ -2,7 +2,7 @@
 title: Startseite
 order: 1
 icon: phosphor-duotone:house
-summary: Zeig auf einen docs/-Ordner (oder src/, wenn dein Projekt inhaltlich gar nicht "docs" ist). Erhalte eine schnelle, themefähige statische Website daraus - Dokumentation, eine Marketing-Site, ein Blog, oder alles andere, was sich in Markdown ausdrücken lässt - komplett mit Suche, i18n und einem Markdown-Toolkit für echten Content.
+summary: Zeig auf einen docs/-Ordner (oder src/, wenn dein Projekt inhaltlich gar nicht "docs" ist). Erhalte eine schnelle, themefähige statische Website daraus - Dokumentation, eine Marketing-Site, ein Blog, oder alles andere, was sich in Markdown ausdrücken lässt - komplett mit Suche, i18n und einem Markdown-Toolkit für echten Content. KI-first gebaut, mit llms.txt, AGENTS.md und MCP-Ausgabe. Überall hostbar oder auf bxSites Cloud.
 toc: false
 ---
 
@@ -24,7 +24,9 @@ sich in Markdown schreiben lässt, wird auf demselben Weg gebaut - mit
 denselben Themes, derselben Suche und demselben i18n. Der Content liegt
 standardmäßig unter `docs/`, oder unter `src/`, wenn dein Projekt
 inhaltlich eher eine Website als "docs" ist - jeder Befehl funktioniert in
-beiden Fällen gleich.
+beiden Fällen gleich. Wo der Content tatsächlich liegt, ist ebenfalls
+konfigurierbar - jeder beliebige Ordnername, oder das gesamte Repository
+ohne Unterordner - siehe [Content-Quelle](guides/content-source.md).
 
 ::: cards
 ::: card title="Markdown rein, statisches HTML raus" icon="phosphor-duotone:file-html"

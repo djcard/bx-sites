@@ -40,6 +40,20 @@ für die `docs/`-oder-`src/`-Konvention. `new` erzeugt immer ein Gerüst mit
 | `-h`, `--help` | Nutzung anzeigen und beenden |
 | `-v`, `--version` | Modulversion anzeigen und beenden |
 
+Pfad-Flags (`--source`, `--path`, `--dest`, `--output`) akzeptieren einen absoluten Pfad, einen `~/`-Pfad im Home-Ordner oder einen Pfad relativ zum Projektstamm.
+
+## Tab-Vervollständigung
+
+Das Modul liefert Vervollständigungs-Skripte für bash, fish und PowerShell im Ordner `completions/` mit. Sie vervollständigen Verben (`page:new`, auch als `page new` geschrieben), Flags und die Werte von Flags mit festem Wertebereich (`--theme=`, `--target=`, `--from=`, ...).
+
+| Shell | Installation |
+|---|---|
+| bash | Automatisch mit `install-bx-module bx-sites`, das `boxlang.completions` aus der `box.json` des Moduls liest. Andernfalls `source <Modulordner>/completions/bxSites.bash` in `~/.bashrc` eintragen. |
+| fish | `cp <Modulordner>/completions/bxSites.fish ~/.config/fish/completions/` |
+| PowerShell | `. <Modulordner>/completions/bxSites.ps1` in `$PROFILE` eintragen. |
+
+Die Skripte werden aus der Verb-Tabelle in `ModuleConfig.bx` generiert. Nach der Änderung eines Verbs mit `boxlang tools/generate-completions.bxs` neu erzeugen; ein Spec schlägt fehl, wenn die eingecheckten Skripte veraltet sind.
+
 ## `new`
 
 Ein Docs-Projekt aufsetzen.
@@ -108,10 +122,13 @@ bxSites search-index
 ## `clean`
 
 Entfernt `site/` und jeglichen Build-Cache, lässt `docs/` und die
-Website-Konfiguration unangetastet.
+Website-Konfiguration unangetastet. Fragt vorher nach einer Bestätigung;
+`--force` überspringt die Abfrage (in CI und Skripten erforderlich, wo
+niemand antworten kann).
 
 ```bash frame="terminal" title="Terminal"
 bxSites clean
+bxSites clean --force
 ```
 
 ## `gh-deploy`
@@ -153,7 +170,7 @@ bxSites deploy [--verbose]
 Drei Arten, es aufzurufen:
 
 1. **`--entry=<name>`** - leitet an das Ziel weiter, das eine
-   `deployments/<name>.json`-Datei deklariert (siehe unten). Jedes Ziel
+   `deployments/<name>.yaml`-Datei deklariert (siehe unten). Jedes Ziel
    außer `local`/`github-pages` braucht das - es gibt mehr Konfiguration,
    als ein paar Flags sinnvoll tragen könnten.
 2. **`--target=<name>` mit seinen eigenen Flags** - eine reine
@@ -161,10 +178,10 @@ Drei Arten, es aufzurufen:
    `deployments/`-Ordner brauchen: `local` (`--destination=<path>`) und
    `github-pages` (`[--branch] [--remote] [--message]`, jedes Feld
    optional, dieselben Standardwerte wie bei `gh-deploy`).
-3. **Kein Flag - alles deployen.** Jeder `deployments/*.json`-Eintrag wird
+3. **Kein Flag - alles deployen.** Jeder `deployments/*`-Eintrag wird
    der Reihe nach deployt, ausgehend von einem einzigen gemeinsamen Build
    (die Website wird einmal gebaut, nicht einmal pro Ziel). Setzt voraus,
-   dass mindestens ein `deployments/*.json`-Eintrag existiert. Schlägt ein
+   dass mindestens ein `deployments/*`-Eintrag existiert. Schlägt ein
    Ziel fehl, stoppt das die übrigen nicht - jeder Eintrag wird versucht,
    und der Befehl liefert nur dann einen von null verschiedenen Exit-Code,
    wenn mindestens einer davon fehlgeschlagen ist; die abschließende
@@ -176,7 +193,7 @@ und wenn jedes Ziel startet/endet, statt nur der abschließenden
 einzeiligen Zusammenfassung.
 
 Siehe [Deployment](guides/deployment.md) für die eigene Konfigurationsform
-jedes Ziels und ein echtes `deployments/*.json`-Beispiel für jedes davon.
+jedes Ziels und ein echtes `deployments/*`-Beispiel für jedes davon.
 
 ## `package`
 
@@ -208,6 +225,7 @@ bxSites migrate --source=/path/to/notion-export --from=notion
 
 - `--source` (erforderlich) - Pfad zum Wurzelverzeichnis des Exports/Projekts (`SUMMARY.md` für `gitbook`, `mkdocs.yml` für `mkdocs`), oder eine `.zip`-Datei (`markdown-zip`; `notion` akzeptiert sowohl eine `.zip` als auch einen bereits entpackten Ordner)
 - `--from` - `gitbook` (Standard), `mkdocs`, `markdown-zip` oder `notion`
+- `--force` - überspringt die Rückfrage. Wenn `docs/` bereits Dateien enthält (oder bei `mkdocs` eine `bxsites.yaml` existiert), fragt `migrate` nach, bevor es sie überschreiben könnte
 
 ### `--from=gitbook` (Standard)
 
@@ -477,6 +495,27 @@ Schlägt fehl, statt ein bestehendes `.theme/` zu überschreiben. Siehe
 [Themes](guides/themes.md) für den Override-Vertrag (`layout.bxm` +
 `page.bxm`).
 
+## `layout:new`
+
+Legt ein benanntes Layout an, indem ein Template des aktiven Themes in den
+Ordner `.overrides/<theme>/` des Projekts kopiert wird, bereit zum Bearbeiten
+und zur Auswahl mit `layout: <name>` im Frontmatter einer Seite oder über eine
+[`layouts:`-Regel](guides/themes.md#implizite-layouts).
+
+```bash title="Usage"
+bxSites layout:new --name=landing [--from=layout] [--theme=bootstrap]
+```
+
+- `--name` (erforderlich) - der Name des neuen Layouts, ein bloßer Template-Name wie `landing`
+- `--from` - welches Template des Themes kopiert werden soll, ohne Erweiterung; Standard ist `layout` (die äußere Hülle)
+- `--theme` - das Theme, von dem kopiert wird; Standard ist das `theme.name` des Projekts
+
+Schlägt fehl, statt eine bestehende Datei zu überschreiben, und listet die
+verfügbaren Templates auf, wenn `--from` eines benennt, das das Theme nicht
+hat. Ein Projekt mit einem vollständigen flachen `.theme/` erhält die Datei
+stattdessen dort. Siehe
+[Projekt-Überschreibungen](guides/themes.md#projekt-überschreibungen).
+
 ## `install:theme`
 
 Lädt ein veröffentlichtes Theme von ForgeBox in die eigenen
@@ -531,15 +570,17 @@ bx-sites-Theme-Gerüst unter `.themes/<name>/`, innerhalb des Content-Root
 des Projekts - ein Ausgangspunkt, kein verlustfreier Ein-Befehl-Port.
 
 ```bash title="Usage"
-bxSites theme:import --source=mkdocs --path=/path/to/theme --name=my-imported-theme
+bxSites theme:import --source=mkdocs --path=/path/to/theme --name=my-imported-theme [--force]
 ```
 
 - `--source` (erforderlich) - `mkdocs`, `jekyll` oder `hugo`
 - `--path` (erforderlich) - der Wurzelordner des Quell-Themes
 - `--name` (erforderlich) - der Zielname, geschrieben nach `.themes/<name>/`
 
-Sicher, gegen denselben `--name` erneut auszuführen -
-`layout.bxm`/`page.bxm` werden überschrieben und neu gefundene
+- `--force` - überspringt die Rückfrage vor dem Überschreiben
+
+Ein erneuter Lauf gegen denselben `--name` fragt zuerst nach (oder `--force`),
+dann werden `layout.bxm`/`page.bxm` überschrieben und neu gefundene
 Asset-Ordner werden zusammengeführt. Siehe
 [Ein Theme importieren](guides/theme-import.md) für genau das, was
 übersetzt wird und was nicht, und was danach zu prüfen ist.

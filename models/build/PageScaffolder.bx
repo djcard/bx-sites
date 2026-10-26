@@ -26,7 +26,7 @@ class {
 		string tags = "",
 		string order = ""
 	) {
-		var trimmedPath = trim( arguments.path ).reReplace( "^[\/]+", "" )
+		var trimmedPath = trim( arguments.path ).reReplace( "^[\\\/]+", "" )
 		if ( !len( trimmedPath ) ) {
 			throw( type = "BxSites.MissingPagePath", message = "`page:new` requires --path=<relative path>.md" )
 		}
@@ -34,7 +34,7 @@ class {
 			throw( type = "BxSites.InvalidPagePath", message = "--path must end in .md (got [#trimmedPath#])" )
 		}
 
-		var trimmedDocsDir = arguments.docsDir.reReplace( "[\/]+$", "" )
+		var trimmedDocsDir = arguments.docsDir.reReplace( "[\\\/]+$", "" )
 		var fullPath = trimmedDocsDir & "/" & trimmedPath
 
 		if ( fileExists( fullPath ) ) {

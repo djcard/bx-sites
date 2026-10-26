@@ -48,8 +48,8 @@ bxSites theme:import --source=mkdocs --path=/path/to/mkdocs-theme --name=my-impo
   que usa `install:theme`) - establece el `theme.name` de
   `bxsites.yaml` una vez que estés satisfecho con el resultado
 
-Volver a ejecutarlo contra el mismo `--name` es seguro - `layout.bxm`/
-`page.bxm` se sobrescriben y cualquier carpeta de recursos recién
+Volver a ejecutarlo contra el mismo `--name` pregunta primero (usa
+`--force` para omitir la confirmación), y luego `layout.bxm`/`page.bxm` se sobrescriben y cualquier carpeta de recursos recién
 encontrada se combina, así que iterar (ajustar el origen, o el mapeo,
 volver a ejecutar) es el flujo de trabajo normal, no una operación de un
 solo uso.
@@ -62,6 +62,18 @@ no se encontró ninguno, si el tema de origen no usa uno de los nombres de
 archivo convencionales de arriba), qué carpetas de recursos (`css/`,
 `js/`, `static/`, ...) se copiaron tal cual en `.themes/<name>/assets/`, y
 una lista numerada de todo lo que necesita revisión manual.
+
+Una carpeta `css/` o `js/` copiada es uno de esos elementos: todo lo que
+hay bajo `.themes/<name>/assets/css/`/`assets/js/` **no** tiene la caché
+invalidada, ya que el
+[fingerprinting](../configuration.md#assets) solo cubre un archivo que
+esté directamente dentro de la propia carpeta `assets/` de un tema,
+nunca uno anidado en un subdirectorio. Para asignarle huella digital a tu
+hoja de estilo/script principal, muévelo directamente a `assets/` (por
+ejemplo, `assets/style.css`) y referénciarlo desde el `layout.bxm`
+convertido con `themeAssetUrl( "style.css" )` en lugar de la ruta que
+haya conservado el traductor - consulta
+[Temas](themes.md#escribir-un-tema-desde-cero).
 
 Dentro de un archivo de plantilla, esto es un **traductor mecánico de
 mejor esfuerzo** (`JinjaLikeTranslator.bx` para la sintaxis Jinja2/Liquid

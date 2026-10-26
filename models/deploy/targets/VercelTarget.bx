@@ -83,7 +83,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 			)
 		}
 
-		var token = getSystemSetting( authTokenEnvVar, "" )
+		var token = getSystemSetting( authTokenEnvVar, "" ).trim()
 		if ( !len( token ) ) {
 			throw(
 				type    = "BxSites.MissingCredentials",
@@ -125,16 +125,14 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 	 *         Vercel's own wire format, which only ever sees `file`/`sha`/`size`)
 	 */
 	array function buildFileManifest( required string siteDir ) {
-		var root = arguments.siteDir.reReplace( "[\/]+$", "" )
+		var root = arguments.siteDir.reReplace( "[\\\/]+$", "" )
 		var files = directoryList( root, true, "path" ).filter( function( path ) {
 			return !directoryExists( path )
 		} )
 
 		var manifest = []
 		for ( var filePath in files ) {
-			var relativePath = filePath.replace( root, "", "one" )
-				.reReplace( "^[\/]+", "" )
-				.replace( char( 92 ), "/", "all" )
+			var relativePath = new "models.build.PathRelativizer@bxsites"().relativeTo( root, filePath )
 			var bytes = readFileBytes( filePath )
 			manifest.append( { file : relativePath, sha : sha1Hex( bytes ), size : bytes.len(), bytes : bytes } )
 		}

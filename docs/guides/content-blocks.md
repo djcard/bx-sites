@@ -154,7 +154,7 @@ palette, via CSS custom properties - see [Customizing colors](themes.md#customiz
 
 ## Image gallery
 
-A responsive grid of images. The optional `columns` attribute is `2`,
+A responsive grid of images. (Any other image in page content is already click-to-enlarge with `imageGallery: true`, see [Images](images.md#click-to-enlarge).) The optional `columns` attribute is `2`,
 `3` or `4` (default `3`); any other value falls back to `3`. The grid
 itself needs no configuration, but the click-to-enlarge lightbox needs
 `bxsites.yaml`'s [`imageGallery`](../configuration.md#imagegallery) set
@@ -587,8 +587,11 @@ minute, not on every single page view.
 > **Premium feature.** `::: comments` mounts a live, moderated visitor
 > comment thread on the page - it requires a bxSites Cloud account with
 > Comments on your plan and `cloud.comments: true` set in `bxsites.yaml`.
-> Without it, a `::: comments` block always fails the build outright, the
-> same posture as `::: cloud` without `cloud.contentBlocks`.
+> Without it, a `::: comments` block does not fail the build: it renders an
+> inert, empty placeholder and the build prints a warning once, naming the
+> first page affected. That is unlike `::: cloud` without
+> `cloud.contentBlocks`, which fails the build because it has to fetch real
+> content.
 
 ```markdown title="Example" linenums="1"
 ::: comments :::

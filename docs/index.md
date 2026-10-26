@@ -2,14 +2,14 @@
 title: Home
 order: 1
 icon: phosphor-duotone:house
-summary: BxSites is a modern, BoxLang-powered static site generator that turns Markdown into fast, themed, searchable websites for documentation, blogs, marketing sites, and knowledge bases.
+summary: bxSites is the AI-first static site generator. It turns Markdown into fast, themed, searchable websites for documentation, blogs, marketing sites, and knowledge bases. Host them anywhere, or on bxSites Cloud.
 toc: false
 layout: home
 ogImage: assets/og-image.png
 ---
 
 <!--
-	This page renders through resources/themes/bootstrap/home.bxm (the
+	This page renders through docs/.overrides/bootstrap/home.bxm (the
 	`layout: home` above), which hardcodes the whole page and never
 	includes this file's own rendered body - everything below is kept,
 	unused, as the starting point for reverting to the normal layout.bxm +

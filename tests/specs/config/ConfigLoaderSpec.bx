@@ -30,6 +30,60 @@ class extends="testbox.system.BaseSpec" {
 				return dir;
 			}
 
+			describe( "theme.name slug and layouts validation", function() {
+
+				it( "accepts a slug theme name", function() {
+					var dir = newProjectDir( '{"name":"X","theme":{"name":"bx-sites-theme-blog1"}}' );
+					expect( loader.load( dir ).theme.name ).toBe( "bx-sites-theme-blog1" );
+				} );
+
+				it( "rejects a theme name that is not a slug, suggesting the slug", function() {
+					var dir = newProjectDir( '{"name":"X","theme":{"name":"My Theme"}}' );
+					expect( function() {
+						loader.load( dir );
+					} ).toThrow( "BxSites.InvalidConfig", "my-theme" );
+				} );
+
+				it( "defaults layouts to an empty array", function() {
+					var dir = newProjectDir( '{"name":"X"}' );
+					expect( loader.load( dir ).layouts ).toBe( [] );
+				} );
+
+				it( "accepts layouts rules with a glob or an array of globs", function() {
+					var dir = newProjectDir( '{"name":"X","layouts":[{"layout":"landing","match":"a/**"},{"layout":"post","match":["b/**","c.md"]}]}' );
+					expect( loader.load( dir ).layouts.len() ).toBe( 2 );
+				} );
+
+				it( "rejects layouts that is not an array", function() {
+					var dir = newProjectDir( '{"name":"X","layouts":{"layout":"a"}}' );
+					expect( function() {
+						loader.load( dir );
+					} ).toThrow( "BxSites.InvalidConfig" );
+				} );
+
+				it( "rejects a layouts entry missing layout or match", function() {
+					var dir = newProjectDir( '{"name":"X","layouts":[{"layout":"landing"}]}' );
+					expect( function() {
+						loader.load( dir );
+					} ).toThrow( "BxSites.InvalidConfig" );
+				} );
+
+				it( "rejects a layout name that is not a bare template name", function() {
+					var dir = newProjectDir( '{"name":"X","layouts":[{"layout":"../x","match":"a/**"}]}' );
+					expect( function() {
+						loader.load( dir );
+					} ).toThrow( "BxSites.InvalidConfig" );
+				} );
+
+				it( "rejects an empty match array", function() {
+					var dir = newProjectDir( '{"name":"X","layouts":[{"layout":"x","match":[]}]}' );
+					expect( function() {
+						loader.load( dir );
+					} ).toThrow( "BxSites.InvalidConfig" );
+				} );
+
+			} );
+
 			it( "throws BxSites.ConfigNotFound when bxsites.json is missing", function() {
 				var dir = newProjectDir();
 				expect( function() {
@@ -590,6 +644,28 @@ class extends="testbox.system.BaseSpec" {
 				expect( function() {
 					loader.load( dir );
 				} ).toThrow( "BxSites.InvalidConfig" );
+			} );
+
+			it( "defaults [ogCard] to an empty object and preserves a user-supplied one", function() {
+				expect( loader.load( newProjectDir( '{"name":"My Docs"}' ) ).ogCard ).toBe( {} );
+
+				var config = loader.load( newProjectDir( '{"name":"My Docs","ogCard":{"accent":"##00ff78","logo":"assets/logo.png","description":false}}' ) );
+				expect( config.ogCard.accent ).toBe( "##00ff78" );
+				expect( config.ogCard.logo ).toBe( "assets/logo.png" );
+				expect( config.ogCard.description ).toBeFalse();
+			} );
+
+			it( "throws BxSites.InvalidConfig when [ogCard] isn't an object, a color isn't a string or a flag isn't a boolean", function() {
+				for ( var json in [
+					'{"name":"My Docs","ogCard":"nope"}',
+					'{"name":"My Docs","ogCard":{"accent":["##fff"]}}',
+					'{"name":"My Docs","ogCard":{"url":"maybe"}}'
+				] ) {
+					var dir = newProjectDir( json );
+					expect( function() {
+						loader.load( dir );
+					} ).toThrow( "BxSites.InvalidConfig" );
+				}
 			} );
 
 			it( "preserves user-supplied [extraCss] and [extraJs] arrays", function() {

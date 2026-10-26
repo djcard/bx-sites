@@ -57,6 +57,7 @@ class {
 	variables.courseBuilder = new "models.build.CourseBuilder@bxsites"()
 	variables.variablesProcessor = new "models.build.VariablesProcessor@bxsites"()
 	variables.iconResolver = new "models.build.IconResolver@bxsites"()
+	variables.implicitLayouts = new "models.build.ImplicitLayouts@bxsites"()
 	variables.imageVariantGenerator = new "models.build.ImageVariantGenerator@bxsites"()
 	variables.responsiveImageProcessor = new "models.build.ResponsiveImageProcessor@bxsites"()
 	variables.assetBundler = new "models.build.AssetBundler@bxsites"()
@@ -73,6 +74,8 @@ class {
 	// from a previous build() call on the same instance); see
 	// copyAssets()'s own docblock.
 	variables.canonicalAssetsDir = ""
+	// Why the last hardlink attempt fell back to a full copy ("" when it didn't)
+	variables.lastHardlinkError = ""
 	// A blog post's real built URL (`blog/<slug>/index.html`, BlogDiscoverer.bx's
 	// own convention) diverges from what MarkdownLinkResolver.bx's generic
 	// docs/-relative-path convention would compute for it
@@ -142,6 +145,7 @@ class {
 		variables.profileTimings = []
 		variables.profileLastAt = buildStartedAt
 		variables.canonicalAssetsDir = ""
+		variables.lastHardlinkError = ""
 
 		progress( "Loading configuration and content..." )
 
@@ -187,10 +191,19 @@ class {
 		// see canonicalUrlFor()'s own docblock.
 		var siteOrigin = len( urls.absolute ) ? left( urls.absolute, len( urls.absolute ) - len( urls.basePath ) ) : ""
 		var themeDir = variables.themeRenderer.resolveThemeDir( config.theme.name, root )
-		config.theme.styleUrl = resolveThemeStyleUrl( themeDir, config.assets.fingerprint )
+		config.theme.assetUrls = buildTopLevelAssetManifest( themeDir & "/assets", "assets/theme", config.assets.fingerprint )
+		// Back-compat for any layout (built-in, pre-upgrade, or a custom
+		// theme copied from an older guide) still using the original
+		// `variables.siteConfig.theme.styleUrl ?: 'assets/theme/style.css'`
+		// idiom instead of calling `themeAssetUrl( "style.css" )` - see
+		// buildTopLevelAssetManifest()'s own docblock for why this is now
+		// just one entry of a larger manifest rather than its own
+		// special-cased lookup.
+		config.theme.styleUrl = config.theme.assetUrls[ "style.css" ] ?: "assets/theme/style.css"
+		config.moduleAssetUrls = buildTopLevelAssetManifest( moduleAssetsDir(), "assets", config.assets.fingerprint )
 
 		// Prepare the site output directory. If it exists, delete it first to ensure a clean build.
-		var siteDir = root & "/site"
+		var siteDir = expandpath(root & "/site")
 		if ( directoryExists( siteDir ) ) {
 			directoryDelete( siteDir, true )
 		}
@@ -757,9 +770,10 @@ class {
 			)
 			assignTableOfContents( blogPosts )
 			assignEditAndLastUpdated( blogPosts, config, root, "" )
-			assignOgImages( blogPosts, config, siteDir )
+			assignOgImages( blogPosts, config, siteDir, docsDir )
 			assignMarkdownUrl( blogPosts )
 			assignIconHtml( blogPosts, docsDir )
+			variables.implicitLayouts.apply( blogPosts, config.layouts ?: [] )
 
 			var blogAuthors = variables.blogAuthorsLoader.load( docsDir )
 			var blogResult = variables.blogBuilder.build( blogPosts, blogAuthors, config.blog.postsPerPage, urls.basePath, imageManifest )
@@ -1032,36 +1046,65 @@ class {
 	}
 
 	/**
-	 * Fingerprints the theme's own `assets/style.css`, so a theme update -
-	 * a built-in theme upgraded along with the module, or a project's own
-	 * `theme/` override edited by hand - always reaches every visitor on
-	 * the next load instead of possibly serving a browser's stale cached
-	 * copy under the same unchanging filename forever (unlike `extraCss`/
-	 * `extraJs`, which already get this via applyAssetPipeline()'s own
-	 * `assetBundler.bundleCss()`/`bundleJs()`). Runs before renderDocTree()
-	 * ever writes a page (build()'s own call site), mutating `config.theme.styleUrl`
-	 * in place so every theme's own `layout.bxm` already has the final,
-	 * correct filename by the time it renders its own `<link>` tag -
-	 * copyAssets() calls this same method again when it actually copies
-	 * the file into `site/`, deterministic from the same source file, so
-	 * no value needs threading through the rest of the render pipeline
-	 * for this.
+	 * Fingerprints every top-level CSS/JS file directly inside `assetsDir` -
+	 * a theme's own `assets/` (built-in or custom alike - `assetsDir` is
+	 * just a path, this has no idea which kind it got) or this module's
+	 * own shared `resources/assets/` - so an edit to any of them always
+	 * reaches every visitor on the next load instead of possibly serving a
+	 * browser's stale cached copy under the same unchanging filename
+	 * forever (unlike `extraCss`/`extraJs`, which already get this via
+	 * applyAssetPipeline()'s own `assetBundler.bundleCss()`/`bundleJs()`).
 	 *
-	 * @themeDir Absolute path to the resolved theme folder (ThemeRenderer.resolveThemeDir()'s own output)
-	 * @fingerprintEnabled `config.assets.fingerprint` - `false` leaves the plain, unhashed filename (rewritten, never cache-skipped, on every build)
+	 * Deliberately NON-recursive: only files directly inside `assetsDir`
+	 * itself get a manifest entry - anything in a subdirectory (a theme's
+	 * own `assets/fonts/`, `assets/vendor/`, or similar) is left with its
+	 * original name untouched. A top-level file is the convention for
+	 * something a layout links to directly (`themeAssetUrl()`/
+	 * `moduleAssetUrl()`, both below); a subdirectory is assumed to hold
+	 * files referenced only *indirectly* - a `@font-face url(...)`, a CSS
+	 * `@import`, a JS `import`/sourcemap comment - by one of those
+	 * top-level files' own content. Renaming those without rewriting every
+	 * place that references them by its old name would break them outright,
+	 * exactly the risk AssetBundler.bx's own docblock already calls out for
+	 * why it never touches a project's original source file either - so
+	 * this stays scoped to what it can rename safely.
 	 *
-	 * @return "assets/theme/style.css" (fingerprinting off, or this theme has no assets/style.css of its own) or "assets/theme/style.<hash>.css"
+	 * Runs once before renderDocTree() ever writes a page (build()'s own
+	 * call site), so `config.theme.assetUrls`/`config.moduleAssetUrls` are
+	 * already final by the time any layout calls `themeAssetUrl()`/
+	 * `moduleAssetUrl()` to render its own `<link>`/`<script>` tags -
+	 * copyAssetsFresh() calls this same method again when it actually
+	 * copies the files into `site/`, deterministic from the same source
+	 * files, so no manifest needs threading through the rest of the render
+	 * pipeline for this.
+	 *
+	 * @assetsDir Absolute (or virtual module-mapping) path to the folder to scan - not required to exist
+	 * @siteRelativePrefix Prepended to every fingerprinted filename to build its final site-relative URL, e.g. `"assets/theme"` or `"assets"`
+	 * @fingerprintEnabled `config.assets.fingerprint` - `false` maps every file to its own plain, unhashed name (rewritten, never cache-skipped, on every build)
+	 *
+	 * @return Struct keyed by plain filename (`"style.css"`, `"main.js"`), each value that file's final site-relative URL
 	 */
-	private string function resolveThemeStyleUrl( required string themeDir, required boolean fingerprintEnabled ) {
-		var plainUrl = "assets/theme/style.css"
-		var styleCssPath = arguments.themeDir & "/assets/style.css"
-
-		if ( !arguments.fingerprintEnabled || !fileExists( styleCssPath ) ) {
-			return plainUrl
+	private struct function buildTopLevelAssetManifest( required string assetsDir, required string siteRelativePrefix, required boolean fingerprintEnabled ) {
+		var manifest = {}
+		if ( !directoryExists( arguments.assetsDir ) ) {
+			return manifest
 		}
 
-		var hash8 = variables.fingerprinter.hashOf( fileRead( styleCssPath ) )
-		return "assets/theme/" & variables.fingerprinter.fingerprint( "style.css", hash8 )
+		for ( var fileName in directoryList( arguments.assetsDir, false, "name" ) ) {
+			if ( !fileName.reFindNoCase( "\.(css|js)$" ) ) {
+				continue
+			}
+
+			if ( !arguments.fingerprintEnabled ) {
+				manifest[ fileName ] = arguments.siteRelativePrefix & "/" & fileName
+				continue
+			}
+
+			var hash8 = variables.fingerprinter.hashOf( fileRead( arguments.assetsDir & "/" & fileName ) )
+			manifest[ fileName ] = arguments.siteRelativePrefix & "/" & variables.fingerprinter.fingerprint( fileName, hash8 )
+		}
+
+		return manifest
 	}
 
 	/**
@@ -1191,9 +1234,10 @@ class {
 		assignBreadcrumbs( pages, nav )
 		assignEditAndLastUpdated( pages, arguments.config, arguments.root, arguments.docsRelativePrefix )
 		assignDescriptions( pages )
-		assignOgImages( pages, arguments.config, arguments.outputDir )
+		assignOgImages( pages, arguments.config, arguments.outputDir, arguments.docsDir )
 		assignMarkdownUrl( pages )
 		assignIconHtml( pages, arguments.docsDir )
+		variables.implicitLayouts.apply( pages, arguments.config.layouts ?: [] )
 
 		var renderingStartedAt = getTickCount()
 		for ( var page in pages ) {
@@ -1305,22 +1349,37 @@ class {
 	}
 
 	/**
-	 * Builds the version switcher's own entries - each one `{ label, url }`,
+	 * Builds the version switcher's own entries - each one `{ label, url, kind }`,
 	 * consumed identically by every built-in theme's own
-	 * `renderVersionSwitcher()` regardless of which branch below produced
-	 * it, so neither this shape nor any theme needs to change between the
-	 * two.
+	 * `renderVersionSwitcher()` (RendererEncapsulator.bx) regardless of which
+	 * branch below produced it, so neither this shape nor any theme needs to
+	 * change between the two. `kind` is one of `"current"` (the version a
+	 * visitor lands on at the site root), `"released"` (any other cut
+	 * `docs/versions/<name>/` snapshot), or `"next"` (the plain `docs/` tree,
+	 * built separately at `/next/` once `defaultVersionName` is set) -
+	 * `renderVersionSwitcher()`'s own grouping/"(Current)" suffix is driven
+	 * entirely by this field rather than string-matching a label, so a
+	 * project's own custom version labeling (nothing stops `version:new`'s
+	 * own name from being anything) never breaks the switcher's grouping.
 	 *
 	 * No `defaultVersionName` (empty, by far the common case): "Latest"
-	 * (the project's regular `docs/`) first, then one per discovered
-	 * `docs/versions/` folder - today's exact, unchanged behavior.
+	 * (the project's regular `docs/`, `kind: "current"`) first, then one
+	 * `kind: "released"` entry per discovered `docs/versions/` folder -
+	 * today's exact ordering, unchanged. There is no `"next"` entry in this
+	 * shape - without `versions.default` there is no separate upcoming tree
+	 * to distinguish from "Latest" (see docs/guides/versioning.md).
 	 *
-	 * `defaultVersionName` set: that version's own name first, pointing at
-	 * the site root (it's the one build() actually renders there - see
-	 * its own docblock), then `"Next"` (the plain `docs/` tree, now built
-	 * separately at `/next/`), then every *other* discovered version -
-	 * `defaultVersionName` itself is skipped here since it's already the
-	 * first entry, never duplicated at its own `/versions/<name>/` URL too.
+	 * `defaultVersionName` set: that version's own name first
+	 * (`kind: "current"`), pointing at the site root (it's the one build()
+	 * actually renders there - see its own docblock), then every *other*
+	 * discovered version (`kind: "released"`, already newest-first per
+	 * VersionsDiscoverer.bx's own sort) - `defaultVersionName` itself is
+	 * skipped here since it's already the first entry, never duplicated at
+	 * its own `/versions/<name>/` URL too - and finally `"Next"`
+	 * (`kind: "next"`) LAST, after every released version, matching how a
+	 * project with both a stable release and an upcoming one is normally
+	 * presented elsewhere ("2.0.x (Current)", "1.0.x", then a separator,
+	 * then "Next") rather than squeezed in second.
 	 *
 	 * @versionNames VersionsDiscoverer.discover()'s own output, newest first
 	 * @basePath The site's own root basePath
@@ -1330,23 +1389,23 @@ class {
 		var hasDefault = len( arguments.defaultVersionName ) > 0
 
 		if ( !hasDefault ) {
-			var versions = [ { label : "Latest", url : arguments.basePath } ]
+			var versions = [ { label : "Latest", url : arguments.basePath, kind : "current" } ]
 			for ( var versionName in arguments.versionNames ) {
-				versions.append( { label : versionName, url : arguments.basePath & "versions/" & versionName & "/" } )
+				versions.append( { label : versionName, url : arguments.basePath & "versions/" & versionName & "/", kind : "released" } )
 			}
 			return versions
 		}
 
 		var versions = [
-			{ label : arguments.defaultVersionName, url : arguments.basePath },
-			{ label : "Next", url : arguments.basePath & "next/" }
+			{ label : arguments.defaultVersionName, url : arguments.basePath, kind : "current" }
 		]
 		for ( var versionName in arguments.versionNames ) {
 			if ( versionName == arguments.defaultVersionName ) {
 				continue
 			}
-			versions.append( { label : versionName, url : arguments.basePath & "versions/" & versionName & "/" } )
+			versions.append( { label : versionName, url : arguments.basePath & "versions/" & versionName & "/", kind : "released" } )
 		}
+		versions.append( { label : "Next", url : arguments.basePath & "next/", kind : "next" } )
 		return versions
 	}
 
@@ -1843,10 +1902,26 @@ class {
 	 * @config The site's bxsites.json config
 	 * @outputDir Absolute path this tree's pages are being written under (`site/` or `site/versions/<name>/`)
 	 */
-	private void function assignOgImages( required array pages, required struct config, required string outputDir ) {
+	private void function assignOgImages( required array pages, required struct config, required string outputDir, string docsDir = "" ) {
 		if ( !arguments.config.generateOgImages ) {
 			return
 		}
+
+		var card = arguments.config.ogCard ?: {}
+		var themeOptions = arguments.config.theme.options ?: {}
+		var cardOptions = {
+			background : card.background ?: "",
+			accent     : len( card.accent ?: "" ) ? card.accent : ( themeOptions.accentColor ?: "" ),
+			accentEnd  : len( card.accentEnd ?: "" ) ? card.accentEnd : ( themeOptions.accentColorDark ?: "" ),
+			text       : card.text ?: "",
+			muted      : card.muted ?: "",
+			logoPath   : resolveOgSourceFile( len( card.logo ?: "" ) ? card.logo : ( arguments.config.theme.logo ?: "" ), arguments.docsDir ),
+			fontPath   : resolveOgSourceFile( card.font ?: "", arguments.docsDir )
+		}
+		var showDescription = card.description ?: true
+		var showUrl = card.url ?: true
+		var showSection = card.section ?: true
+		var siteHost = reReplaceNoCase( arguments.config.baseURL ?: "", "^https?://", "" ).reReplace( "/+$", "" )
 
 		for ( var page in arguments.pages ) {
 			if ( len( trim( page.ogImage ?: "" ) ) ) {
@@ -1856,9 +1931,44 @@ class {
 			var relativePath = "assets/og/" & generatedOgImageFileName( page.urlPath )
 			var outputPath = arguments.outputDir & "/" & relativePath
 			directoryCreate( getDirectoryFromPath( outputPath ), true, true )
-			variables.socialCardGenerator.generate( page.title, arguments.config.name, outputPath )
+
+			var pageOptions = duplicate( cardOptions )
+			var pagePath = page.urlPath.reReplaceNoCase( "/?index\.html$", "", "one" ).reReplace( "^/+", "" )
+			if ( showDescription ) {
+				pageOptions.description = page.description ?: ""
+			}
+			if ( showUrl && len( siteHost ) ) {
+				pageOptions.url = siteHost & ( len( pagePath ) ? "/" & pagePath : "" )
+			}
+			if ( showSection && listLen( pagePath, "/" ) > 1 ) {
+				pageOptions.section = humanizeOgSection( listFirst( pagePath, "/" ) )
+			}
+			variables.socialCardGenerator.generate( page.title, arguments.config.name, outputPath, pageOptions )
 			page.ogImage = relativePath
 		}
+	}
+
+	/**
+	 * Resolves a social-card logo/font setting to an absolute file path under
+	 * the source directory, or "" when unset. An absolute path is kept as is.
+	 */
+	private string function resolveOgSourceFile( required string value, required string docsDir ) {
+		var trimmed = trim( arguments.value )
+		if ( !len( trimmed ) ) {
+			return ""
+		}
+		if ( fileExists( trimmed ) ) {
+			return trimmed
+		}
+		var candidate = arguments.docsDir & "/" & reReplace( trimmed, "^/+", "" )
+		return fileExists( candidate ) ? candidate : ""
+	}
+
+	/**
+	 * "building-and-deploying" -> "Building And Deploying", for the card's section chip.
+	 */
+	private string function humanizeOgSection( required string segment ) {
+		return arguments.segment.replace( "-", " ", "all" ).replace( "_", " ", "all" ).listToArray( " " ).map( ( word ) => uCase( left( word, 1 ) ) & mid( word, 2, len( word ) ) ).toList( " " )
 	}
 
 	/**
@@ -1874,7 +1984,7 @@ class {
 		if ( !len( base ) ) {
 			base = "home"
 		}
-		return base.reReplace( "[\/]", "-", "all" ) & ".png"
+		return base.reReplace( "[\\\/]", "-", "all" ) & ".png"
 	}
 
 	/**
@@ -2021,8 +2131,8 @@ class {
 	 * @return The combined edit URL with normalized separators
 	 */
 	private string function buildEditUrl( required string repoUrl, required string editUri, required string relativePath ) {
-		var base = arguments.repoUrl.reReplace( "[\/]+$", "" )
-		var uri = arguments.editUri.reReplace( "^[\/]+|[\/]+$", "", "all" )
+		var base = arguments.repoUrl.reReplace( "[\\\/]+$", "" )
+		var uri = arguments.editUri.reReplace( "^[\\\/]+|[\\\/]+$", "", "all" )
 		return base & "/" & uri & "/" & arguments.relativePath
 	}
 
@@ -2331,6 +2441,7 @@ class {
 			try {
 				hardlinkDirectory( variables.canonicalAssetsDir, destAssetsDir )
 			} catch ( any e ) {
+				variables.lastHardlinkError = e.message
 				copyAssetsFresh( argumentCollection = arguments )
 			}
 		}
@@ -2373,19 +2484,7 @@ class {
 		var themeAssetsDir = arguments.themeDir & "/assets"
 		if ( directoryExists( themeAssetsDir ) ) {
 			directoryCopy( themeAssetsDir, arguments.siteDir & "/assets/theme", true )
-
-			// Renames the just-copied plain style.css to its fingerprinted
-			// name (resolveThemeStyleUrl() recomputes the identical hash
-			// from the same source file build() already used to pick the
-			// filename every rendered page's own <link> tag points at) -
-			// rather than leaving both the old plain name and the new
-			// hashed one sitting in site/, which would just be dead weight
-			// nothing ever links to.
-			var styleUrl = resolveThemeStyleUrl( arguments.themeDir, arguments.fingerprintEnabled )
-			var copiedStylePath = arguments.siteDir & "/assets/theme/style.css"
-			if ( styleUrl != "assets/theme/style.css" && fileExists( copiedStylePath ) ) {
-				fileMove( copiedStylePath, arguments.siteDir & "/" & styleUrl )
-			}
+			renameToFingerprintedNames( themeAssetsDir, arguments.siteDir & "/assets/theme", arguments.fingerprintEnabled )
 		}
 
 		directoryCreate( arguments.siteDir & "/assets", true, true )
@@ -2400,7 +2499,7 @@ class {
 		fileCopy( moduleAssetsDir() & "/prompt-init.js", arguments.siteDir & "/assets/prompt-init.js" )
 		fileCopy( moduleAssetsDir() & "/contact-form-init.js", arguments.siteDir & "/assets/contact-form-init.js" )
 		fileCopy( moduleAssetsDir() & "/code-lines.js", arguments.siteDir & "/assets/code-lines.js" )
-		fileCopy( moduleAssetsDir() & "/home.css", arguments.siteDir & "/assets/home.css" )
+		fileCopy( moduleAssetsDir() & "/bxsites-logo.svg", arguments.siteDir & "/assets/bxsites-logo.svg" )
 		directoryCopy( moduleAssetsDir() & "/fonts", arguments.siteDir & "/assets/fonts", true )
 		directoryCopy( moduleAssetsDir() & "/vendor/highlight", arguments.siteDir & "/assets/vendor/highlight", true )
 		directoryCopy( moduleAssetsDir() & "/vendor/alpine", arguments.siteDir & "/assets/vendor/alpine", true )
@@ -2459,6 +2558,52 @@ class {
 				fileCopy( cachedPath, arguments.siteDir & "/assets/" & bundle.fileName )
 			}
 		}
+
+		// Renames whichever of the shared module scripts/styles above
+		// actually got copied this build to their fingerprinted names - a
+		// feature flag left off (e.g. mathEnabled = false) just means
+		// renameToFingerprintedNames() skips a manifest entry whose file
+		// was never copied in the first place, same as any other missing
+		// file (see its own docblock).
+		renameToFingerprintedNames( moduleAssetsDir(), arguments.siteDir & "/assets", arguments.fingerprintEnabled )
+	}
+
+	/**
+	 * Renames whichever files `copyAssetsFresh()` just copied into
+	 * `destDir` to the fingerprinted names `buildTopLevelAssetManifest()`
+	 * computes for that same `sourceDir` - recomputed here rather than
+	 * threaded through from build()'s own call, deterministic from the
+	 * same source files (buildTopLevelAssetManifest()'s own docblock), so
+	 * no manifest needs passing down through copyAssets()/copyAssetsFresh()'s
+	 * already-long argument lists for this. Silently skips any manifest
+	 * entry whose source file wasn't actually copied this build (a feature
+	 * flag left off, e.g. `mathEnabled = false` for `math-init.js`) - same
+	 * "missing file, nothing to rename" shape `resolveThemeStyleUrl()`
+	 * used to handle for the single-file style.css case this generalizes.
+	 *
+	 * @sourceDir The same absolute/virtual path buildTopLevelAssetManifest() scanned to build the manifest in the first place
+	 * @destDir Where copyAssetsFresh() just copied sourceDir's own files to
+	 * @fingerprintEnabled `config.assets.fingerprint`
+	 */
+	private void function renameToFingerprintedNames( required string sourceDir, required string destDir, required boolean fingerprintEnabled ) {
+		if ( !arguments.fingerprintEnabled ) {
+			return
+		}
+
+		var manifest = buildTopLevelAssetManifest( arguments.sourceDir, "", true )
+		for ( var fileName in manifest ) {
+			// buildTopLevelAssetManifest() was called with an empty prefix
+			// above, so its value is "/" & the fingerprinted filename alone.
+			var fingerprintedName = manifest[ fileName ].right( len( manifest[ fileName ] ) - 1 )
+			if ( fingerprintedName == fileName ) {
+				continue
+			}
+
+			var copiedPath = arguments.destDir & "/" & fileName
+			if ( fileExists( copiedPath ) ) {
+				fileMove( copiedPath, arguments.destDir & "/" & fingerprintedName )
+			}
+		}
 	}
 
 	/**
@@ -2499,10 +2644,10 @@ class {
 
 		var Files = createObject( "java", "java.nio.file.Files" )
 		var Paths = createObject( "java", "java.nio.file.Paths" )
-		var sourcePrefixLength = len( arguments.source ) + 1 // +1 for the separator between source and the relative path below
+		var relativizer = new "models.build.PathRelativizer@bxsites"()
 
 		for ( var sourceFile in directoryList( arguments.source, true, "path", "*", "asc", "file" ) ) {
-			var relativePath = right( sourceFile, len( sourceFile ) - sourcePrefixLength )
+			var relativePath = relativizer.relativeTo( arguments.source, sourceFile )
 			var destFile = arguments.dest & "/" & relativePath
 
 			if ( fileExists( destFile ) ) {
@@ -2519,12 +2664,20 @@ class {
 	}
 
 	/**
+	 * Why the last build fell back from hardlinking a tree's assets/ to a
+	 * full copy - "" when every tree hardlinked fine. Diagnostic only.
+	 */
+	string function getLastHardlinkError() {
+		return variables.lastHardlinkError
+	}
+
+	/**
 	 * Absolute path to this module's own shared (theme-independent) assets,
 	 * found relative to this class's own file - the same approach
 	 * ThemeRenderer.bx uses for its built-in themes folder.
 	 */
 	private string function moduleAssetsDir() {
-		return getDirectoryFromPath( getCurrentTemplatePath() ).reReplace( "[\/]models[\/]build[\/]?$", "" ) & "/resources/assets"
+		return getDirectoryFromPath( getCurrentTemplatePath() ).reReplace( "[\\\/]models[\\\/]build[\\\/]?$", "" ) & "/resources/assets"
 	}
 
 	/**
@@ -2534,7 +2687,7 @@ class {
 	 * @projectRoot A project root, trailing slash optional
 	 */
 	private string function normalizeRoot( required string projectRoot ) {
-		return arguments.projectRoot.reReplace( "[\/]+$", "" )
+		return arguments.projectRoot.reReplace( "[\\\/]+$", "" )
 	}
 
 }

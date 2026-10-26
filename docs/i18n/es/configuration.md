@@ -205,7 +205,7 @@ en disco, la construcción falla de forma explícita en lugar de adivinar.
 `bxSites new` siempre lo escribe de forma explícita, así que un proyecto
 recién generado nunca es ambiguo. Consulta
 [Origen del Contenido](guides/content-source.md) para el panorama
-completo, incluyendo las sobrescrituras `.theme`/`.themes` que viven
+completo, incluyendo las carpetas `.theme`/`.themes`/`.overrides` que viven
 dentro de esta carpeta, y la guía
 [Monorepos Multi-Dominio](guides/multi-domain.md) para ejecutar varias
 raíces de proyecto independientes desde un solo repositorio.
@@ -214,7 +214,7 @@ raíces de proyecto independientes desde un solo repositorio.
 
 Nombres adicionales de archivos/carpetas a dejar fuera de la
 construcción, además de los tradicionales que bxSites siempre excluye
-(`.git`, `.github`, `node_modules`, `boxlang_modules`, `site`, `.theme`,
+(cualquier carpeta o archivo que empiece por punto como `.git` o `.claude`, `node_modules`, `boxlang_modules`, `site`, `.theme`,
 `.themes`, y el propio archivo de configuración de este proyecto).
 Coincide de la misma forma - un nombre simple en la raíz de `source`, o
 un nombre en cualquier lugar debajo de ella mediante un segmento de ruta
@@ -281,12 +281,40 @@ basado en `src/` - consulta
 cual, byte a byte, en lugar del generado, en cada construcción - la clave
 `robots` de arriba se ignora por completo en cuanto existe este archivo.
 
+## `layouts`
+
+Layouts implícitos: asigna un layout a cada página cuya ruta coincida con
+un glob, sin repetir `layout:` en el frontmatter de cada página. Las reglas
+se prueban en orden y gana la primera coincidencia; el propio frontmatter
+`layout:` de una página siempre gana sobre una regla.
+
+```yaml title="bxsites.yaml"
+layouts:
+  - layout: landing
+    match: ["marketing/**", "pricing.md"]
+  - layout: post
+    match: "blog/posts/**"
+```
+
+- `layout` - un nombre simple de plantilla como `landing` (letras, dígitos,
+  `-`, `_`)
+- `match` - un glob, o una lista de globs, comparado con la ruta de la
+  página relativa a la raíz de contenido
+
+Por defecto no hay reglas. Consulta
+[Layouts implícitos](guides/themes.md#layouts-implícitos) para la sintaxis
+de los globs.
+
 ## `theme`
 
 - `theme.name` - uno de los temas incorporados (`bootstrap`, `material`,
-  `tailwind`), o el nombre de un tema personalizado que proporciones
-  mediante una carpeta `.theme/` dentro de la raíz de contenido (consulta
-  [Temas](guides/themes.md))
+  `tailwind`, ...), o el nombre de un tema instalado, o cualquier nombre
+  cuando proporcionas un tema completo mediante una carpeta `.theme/`
+  dentro de la raíz de contenido (consulta [Temas](guides/themes.md)). Debe
+  ser un slug: letras minúsculas, dígitos y guiones, el mismo valor que
+  devuelve `slugify()` de BoxLang. Los cambios de un proyecto a un tema
+  viven en `.overrides/<theme.name>/` (consulta
+  [Sobrescrituras del proyecto](guides/themes.md#sobrescrituras-del-proyecto))
 - `theme.logo` - ruta/URL a una imagen mostrada junto al nombre del sitio
   en la marca de la cabecera (en lugar del glifo "⚡" por defecto) - una
   ruta relativa (por ejemplo `"assets/logo.svg"`, resuelta contra
@@ -381,6 +409,26 @@ cual, byte a byte, en lugar del generado, en cada construcción - la clave
     === "JSON"
         ```json
         { "theme": { "options": { "pageMetaPosition": "top" } } }
+        ```
+  - `theme.options.navAccentLine` - `true` (el valor por defecto) dibuja
+    una fina línea vertical junto a una sección anidada de la navegación
+    lateral, vinculando visualmente sus elementos hijos con la sección
+    padre. `false` la desactiva.
+  - `theme.options.navAccentLineColor` - un color hexadecimal (de 3 o 6
+    dígitos) que sobrescribe el color de la línea de acento de la
+    navegación. Si no se define, recurre a
+    `theme.options.accentColor`/`accentColorDark` cuando esté configurado,
+    o al color de acento nativo del tema en caso contrario - solo
+    relevante cuando `navAccentLine` está activo.
+
+    === "YAML"
+        ```yaml
+        theme: { options: { navAccentLine: true, navAccentLineColor: "#2563eb" } }
+        ```
+
+    === "JSON"
+        ```json
+        { "theme": { "options": { "navAccentLine": true, "navAccentLineColor": "#2563eb" } } }
         ```
 
 ## `search`
@@ -960,16 +1008,30 @@ completo, incluido lo que deliberadamente no está cubierto (AVIF, GIFs
 animados, SVGs).
 
 - `assets.fingerprint` - `true` (el valor por defecto). Asigna un nombre
-  con hash de contenido a cada variante de imagen generada y cada paquete
-  CSS/JS (por ejemplo, `screenshot-800w.a3f9c2e1.webp`,
-  `bundle.a3f9c2e1.css`), de modo que puedan servirse con cabeceras de
-  caché seguras y de larga duración - una construcción del proyecto solo
-  cambia el propio nombre del archivo cuando su contenido realmente
-  cambia. No renombra los archivos originales propios de un proyecto bajo
-  `docs/assets/` - solo se le asigna huella digital a la salida generada
-  por el pipeline, así que cualquier otra cosa que referencie un recurso
-  por su nombre de archivo simple (una tarjeta de descarga `::: file`, un
-  enlace de markdown en bruto) sigue funcionando sin cambios.
+  con hash de contenido a cada variante de imagen generada, cada paquete
+  CSS/JS y cualquier archivo CSS/JS de nivel superior ubicado
+  directamente dentro de la propia carpeta `assets/` del tema activo o de
+  la propia carpeta `assets/` compartida de este módulo (por ejemplo,
+  `screenshot-800w.a3f9c2e1.webp`, `bundle.a3f9c2e1.css`,
+  `style.a3f9c2e1.css`, `copy-code.a3f9c2e1.js`), de modo que puedan
+  servirse con cabeceras de caché seguras y de larga duración - una
+  construcción del proyecto solo cambia el propio nombre de un archivo
+  cuando su contenido realmente cambia. Esto significa que una
+  actualización de tema - una mejora de un tema incorporado, o un autor
+  personalizado editando el CSS/JS de su propio tema - invalida
+  automáticamente la caché del navegador de cada visitante en el
+  siguiente despliegue, sin ningún paso manual de versionado, siempre que
+  el propio `layout.bxm` del tema enlace ese archivo mediante
+  `themeAssetUrl()`/`moduleAssetUrl()` en lugar de una ruta fija - consulta
+  [Temas](guides/themes.md#escribir-un-tema-desde-cero). No renombra los
+  archivos originales propios de un proyecto bajo `docs/assets/`, ni nada
+  dentro de un subdirectorio de la propia carpeta `assets/` de un tema -
+  solo se le asigna huella digital a la salida generada por el pipeline y
+  a los propios archivos de nivel superior de un tema, así que cualquier
+  otra cosa que referencie un recurso por su nombre de archivo simple
+  (una tarjeta de descarga `::: file`, un enlace de markdown en bruto, el
+  propio `@font-face`/`@import` de un tema) sigue funcionando sin
+  cambios.
 - `assets.bundle` - `true` (el valor por defecto). Concatena
   `extraCss`/`extraJs` en un único archivo con huella digital cada uno -
   BoxLang/JVM puro, sin cadena de herramientas de Node/esbuild. Recurre

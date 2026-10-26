@@ -2,7 +2,7 @@
 title: Home
 order: 1
 icon: phosphor-duotone:house
-summary: Punta BxSites su una cartella docs/ (o src/, se il tuo progetto non è davvero "docs" nello spirito). Ottieni un sito statico veloce e personalizzabile - documentazione, un sito marketing, un blog, o qualsiasi altra cosa il Markdown possa esprimere - completo di ricerca, i18n, e un toolkit Markdown pensato per contenuti reali.
+summary: Punta BxSites su una cartella docs/ (o src/, se il tuo progetto non è davvero "docs" nello spirito). Ottieni un sito statico veloce e personalizzabile - documentazione, un sito marketing, un blog, o qualsiasi altra cosa il Markdown possa esprimere - completo di ricerca, i18n, e un toolkit Markdown pensato per contenuti reali. Pensato prima di tutto per l'IA, con llms.txt, AGENTS.md e output MCP inclusi. Ospitalo ovunque o su bxSites Cloud.
 toc: false
 ---
 
@@ -24,7 +24,10 @@ cosa tu possa scrivere in Markdown si compila allo stesso modo,
 attraverso gli stessi temi, la stessa ricerca e la stessa i18n. I
 contenuti vivono in `docs/` per impostazione predefinita, o in `src/` se
 il tuo progetto assomiglia più a un sito web che a "docs" - ogni comando
-funziona allo stesso modo in entrambi i casi.
+funziona allo stesso modo in entrambi i casi. Dove vive davvero il
+contenuto è a sua volta configurabile - qualsiasi nome di cartella, o
+l'intero repository senza alcuna sottocartella - vedi
+[Origine del contenuto](guides/content-source.md).
 
 ::: cards
 ::: card title="Markdown in ingresso, HTML statico in uscita" icon="phosphor-duotone:file-html"

@@ -40,6 +40,7 @@ class {
 				"pagefind" : { "bin" : "pagefind", "options" : [] }
 			},
 			"nav"          : [],
+			"layouts"      : [],
 			"markdown"     : { "enableAdmonition" : true },
 			"repo"         : { "url" : "", "editUri" : "" },
 			"social"       : [],
@@ -54,6 +55,7 @@ class {
 			"analytics"    : { "provider" : "", "id" : "" },
 			"ogImage"      : "",
 			"generateOgImages" : false,
+			"ogCard"       : {},
 			"extraCss"     : [],
 			"extraJs"      : [],
 			"assets"       : {
@@ -140,7 +142,7 @@ class {
 	 */
 	struct function load( required string projectRoot ) {
 		var configPath = configPathFor( arguments.projectRoot )
-		variables.configFileName = configPath.listLast( "/" )
+		variables.configFileName = getFileFromPath( configPath )
 
 		if ( !fileExists( configPath ) ) {
 			throw(
@@ -213,7 +215,7 @@ class {
 	 * @projectRoot Absolute path to the project root
 	 */
 	string function configPathFor( required string projectRoot ) {
-		var dir = arguments.projectRoot.reReplace( "[\/]+$", "" )
+		var dir = arguments.projectRoot.reReplace( "[\\\/]+$", "" )
 
 		for ( var fileName in static.configFileNames ) {
 			var candidate = dir & "/" & fileName
@@ -252,6 +254,47 @@ class {
 	}
 
 	/**
+	 * Validates the implicit-layouts rules (`layouts:` in bxsites.yaml): an
+	 * array of `{ layout, match }` entries, where `layout` is a bare template
+	 * name and `match` is one glob or an array of globs matched against each
+	 * page's content-root-relative path.
+	 *
+	 * @layouts The raw `layouts` value from the merged config
+	 */
+	private void function validateLayouts( required any layouts ) {
+		if ( !isArray( arguments.layouts ) ) {
+			throw(
+				type    = "BxSites.InvalidConfig",
+				message = "#variables.configFileName# [layouts] must be an array of { layout, match } entries"
+			)
+		}
+
+		var position = 0
+		for ( var rule in arguments.layouts ) {
+			position++
+			if ( !isStruct( rule ) || !len( trim( rule.layout ?: "" ) ) || !rule.keyExists( "match" ) ) {
+				throw(
+					type    = "BxSites.InvalidConfig",
+					message = "#variables.configFileName# [layouts] entry #position# must have a [layout] name and a [match] glob (or array of globs)"
+				)
+			}
+			if ( !reFind( "^[A-Za-z0-9][A-Za-z0-9_-]*$", trim( rule.layout ) ) ) {
+				throw(
+					type    = "BxSites.InvalidConfig",
+					message = "#variables.configFileName# [layouts] entry #position#: [layout] must be a bare template name like [landing], got [#rule.layout#]"
+				)
+			}
+			var globs = isArray( rule.match ) ? rule.match : [ rule.match ]
+			if ( !globs.len() || globs.some( ( glob ) => !isSimpleValue( glob ) || !len( trim( glob ) ) ) ) {
+				throw(
+					type    = "BxSites.InvalidConfig",
+					message = "#variables.configFileName# [layouts] entry #position#: [match] must be a non-empty glob string or an array of them"
+				)
+			}
+		}
+	}
+
+	/**
 	 * Validates a merged site configuration struct.
 	 *
 	 * @config The merged config struct to validate
@@ -273,6 +316,18 @@ class {
 				message = "#variables.configFileName# [theme] must be an object with a [name] property"
 			)
 		}
+
+		// A theme name is a slug: it names the theme's folder (built-in,
+		// `.themes/<name>/`) and its `.overrides/<name>/` folder, so it must be
+		// exactly what BoxLang's own slugify() would produce from it.
+		if ( slugify( theme.name ) != theme.name ) {
+			throw(
+				type    = "BxSites.InvalidConfig",
+				message = "#variables.configFileName# [theme.name] must be a slug (lowercase letters, digits and hyphens), got [#theme.name#]; did you mean [#slugify( theme.name )#]?"
+			)
+		}
+
+		validateLayouts( arguments.config.layouts ?: [] )
 
 		var colorMode = theme.options.colorMode ?: "auto"
 		if ( !listFindNoCase( "light,dark,auto", colorMode ) ) {
@@ -496,6 +551,29 @@ class {
 			)
 		}
 
+		if ( !isStruct( arguments.config.ogCard ?: {} ) ) {
+			throw(
+				type    = "BxSites.InvalidConfig",
+				message = "#variables.configFileName# [ogCard], when present, must be an object"
+			)
+		}
+		for ( var ogCardKey in [ "background", "accent", "accentEnd", "text", "muted", "logo", "font" ] ) {
+			if ( !isSimpleValue( ( arguments.config.ogCard ?: {} )[ ogCardKey ] ?: "" ) ) {
+				throw(
+					type    = "BxSites.InvalidConfig",
+					message = "#variables.configFileName# [ogCard.#ogCardKey#], when present, must be a string"
+				)
+			}
+		}
+		for ( var ogCardFlag in [ "description", "url", "section" ] ) {
+			if ( !isBoolean( ( arguments.config.ogCard ?: {} )[ ogCardFlag ] ?: true ) ) {
+				throw(
+					type    = "BxSites.InvalidConfig",
+					message = "#variables.configFileName# [ogCard.#ogCardFlag#], when present, must be a boolean"
+				)
+			}
+		}
+
 		for ( var assetsKey in [ "extraCss", "extraJs" ] ) {
 			var assetUrls = arguments.config[ assetsKey ] ?: ""
 			if ( !isArray( assetUrls ) ) {
@@ -698,10 +776,11 @@ class {
 	 * `"skip"`, default `"fail"`) controls what a `::: cloud` block does
 	 * when its own build-time fetch fails - DirectiveBlockProcessor.bx's
 	 * own `renderCloud()`. `comments` (default `false`) gates both
-	 * `::: comments` itself (a bare block in a project that hasn't turned
-	 * this on always fails the build, same posture as `contentBlocks`
-	 * below) and whether the small client-side comments-init.js runtime
-	 * gets shipped - see BuildPipeline.bx's `copyAssets()`. Unlike
+	 * `::: comments` itself (a block in a project that hasn't turned this
+	 * on renders an inert placeholder and the build prints a warning,
+	 * unlike `contentBlocks`, which fails) and whether the small
+	 * client-side comments-init.js runtime gets shipped - see
+	 * BuildPipeline.bx's `copyAssets()`. Unlike
 	 * `contentBlocks`, there's no build-time fetch for `::: comments` (it
 	 * always live-loads client-side, same-origin through the edge router -
 	 * see DirectiveBlockProcessor.bx's own `renderComments()`), so it needs

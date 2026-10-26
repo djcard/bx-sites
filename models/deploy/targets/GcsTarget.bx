@@ -26,22 +26,7 @@
 class implements="models.deploy.IDeploymentTarget@bxsites" {
 
 	variables.SCOPE = "https://www.googleapis.com/auth/devstorage.read_write"
-	variables.MIME_TYPES = {
-		"html"  : "text/html",
-		"htm"   : "text/html",
-		"css"   : "text/css",
-		"js"    : "application/javascript",
-		"json"  : "application/json",
-		"xml"   : "application/xml",
-		"svg"   : "image/svg+xml",
-		"png"   : "image/png",
-		"jpg"   : "image/jpeg",
-		"jpeg"  : "image/jpeg",
-		"gif"   : "image/gif",
-		"ico"   : "image/x-icon",
-		"woff"  : "font/woff",
-		"woff2" : "font/woff2"
-	}
+	variables.contentTypes = new "models.deploy.ContentTypes@bxsites"()
 
 	/**
 	 * @return this
@@ -76,16 +61,17 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 		}
 
 		var prefix = trim( arguments.config.prefix ?: "" )
-		var siteDir = arguments.context.siteDir.reReplace( "[\/]+$", "" )
+		var siteDir = arguments.context.siteDir.reReplace( "[\\\/]+$", "" )
 
 		var files = directoryList( siteDir, true, "path" ).filter( function( path ) {
 			return !directoryExists( path )
 		} )
 
-		var accessToken = variables.auth.getAccessToken( serviceAccountKeyPath, variables.SCOPE ).accessToken
+		var keyPath = new "models.build.PathRelativizer@bxsites"().resolve( arguments.context.projectRoot ?: getSystemSetting( "user.dir", "" ), serviceAccountKeyPath )
+		var accessToken = variables.auth.getAccessToken( keyPath, variables.SCOPE ).accessToken
 
 		for ( var filePath in files ) {
-			var relativePath = filePath.replace( siteDir, "", "one" ).reReplace( "^[\/]+", "" )
+			var relativePath = new "models.build.PathRelativizer@bxsites"().relativeTo( siteDir, filePath )
 			uploadFile( bucket, buildObjectName( prefix, relativePath ), filePath, accessToken )
 		}
 
@@ -116,8 +102,8 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 	 * @return The URL-encoded object name, safe to place directly after `name=` in a query string
 	 */
 	string function buildObjectName( required string prefix, required string relativePath ) {
-		var normalizedRelative = arguments.relativePath.replace( char( 92 ), "/", "all" ).reReplace( "^[\/]+", "" )
-		var normalizedPrefix = trim( arguments.prefix ).replace( char( 92 ), "/", "all" ).reReplace( "^[\/]+", "" ).reReplace( "[\/]+$", "" )
+		var normalizedRelative = arguments.relativePath.replace( char( 92 ), "/", "all" ).reReplace( "^[\\\/]+", "" )
+		var normalizedPrefix = trim( arguments.prefix ).replace( char( 92 ), "/", "all" ).reReplace( "^[\\\/]+", "" ).reReplace( "[\\\/]+$", "" )
 		var objectName = len( normalizedPrefix ) ? normalizedPrefix & "/" & normalizedRelative : normalizedRelative
 
 		return urlEncodedFormat( objectName ).reReplaceNoCase( "%2F", "/", "all" )
@@ -133,8 +119,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 	 * @return The guessed MIME type
 	 */
 	string function guessContentType( required string relativePath ) {
-		var ext = lCase( listLast( arguments.relativePath, "." ) )
-		return variables.MIME_TYPES[ ext ] ?: "application/octet-stream"
+		return variables.contentTypes.guess( arguments.relativePath )
 	}
 
 	/**

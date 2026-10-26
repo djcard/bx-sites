@@ -109,7 +109,7 @@ content actually lives).
 ## Excluding files and folders
 
 bxSites always excludes a handful of names from the content scan on its
-own - `.git`, `.github`, `node_modules`, `boxlang_modules`, `site`,
+own - any dot-prefixed folder or file (`.git`, `.github`, `.claude`, ...), `node_modules`, `boxlang_modules`, `site`,
 `.theme`, `.themes`, and its own config file (`bxsites.yaml`/`.yml`/
 `.toml`/`.json`, `box.json`) - the same way it already excludes
 `assets/`, `versions/`, `i18n/`, `blog/`, and `includes/` from being
@@ -160,11 +160,13 @@ reference entry.
 ## Where a theme override lives
 
 A project's own theme override - a hand-authored `.theme/` (see
-[Themes: Overriding a theme](themes.md#overriding-a-theme)) or an
-`install:theme`-installed `.themes/<name>/` (see
+[Themes: Overriding a theme](themes.md#overriding-a-theme)), a per-theme
+`.overrides/<theme>/` (see [Themes: Project overrides](themes.md#project-overrides)),
+or an `install:theme`-installed `.themes/<name>/` (see
 [Themes: Installing a published theme](themes.md#installing-a-published-theme)) -
 lives **inside the resolved content root**, not at the bare project root:
-`<contentRoot>/.theme/` and `<contentRoot>/.themes/<name>/`, where
+`<contentRoot>/.theme/`, `<contentRoot>/.overrides/<theme>/` and
+`<contentRoot>/.themes/<name>/`, where
 `<contentRoot>` is wherever `source` (or auto-detection) resolves to -
 `docs/`, `src/`, a custom folder name, or the project root itself for
 `source: .`.
@@ -180,7 +182,7 @@ my-project/
         └── page.bxm
 ```
 
-Keeping `.theme`/`.themes` inside the content root rather than at the
+Keeping `.theme`/`.overrides`/`.themes` inside the content root rather than at the
 bare project root matters most once a repository has more than one
 project root in it - see
 [Multi-Domain Monorepos](multi-domain.md) for that pattern. Each

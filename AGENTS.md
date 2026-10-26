@@ -30,9 +30,10 @@ contracts.
   unset, `docs/` then `src/` are auto-detected; when neither exists AND
   `source` is unset, resolving throws `BxSites.SourceNotConfigured` instead of
   silently falling back to the project root - see docs/guides/content-source.md.
-- A project's `.theme/` (an authored override) and `.themes/<name>/` (an
-  `install:theme`-installed theme) both live inside that resolved content
-  root, not at the project root.
+- A project's `.theme/` (an authored, complete theme), `.overrides/<theme>/`
+  (files layered over the theme named in `theme.name`: layouts, slots,
+  assets) and `.themes/<name>/` (an `install:theme`-installed theme) all
+  live inside that resolved content root, not at the project root.
 - `site/` is always generated build output. Never treat it as a source folder;
   builds remove and recreate it.
 - Deployment configuration belongs under `deployments/`, not `deploy/`, to
@@ -146,6 +147,17 @@ rm -rf "${BOXLANG_HOME}/classes/$(pwd | tr '/' '_')"
 
 ## BoxLang Conventions
 
+- Use the BoxLang ecosystem first: a built-in function, a component or an
+  installed module (`bx-image` for images, `bx-yaml`, `bx-toml`,
+  `bx-markdown`, `bx-esapi`, `bx-ftp`...) before reaching for Java. Only go
+  down to `createObject( "java", ... )` when no BoxLang module can do the
+  job, and when a module is missing a capability, say so so it can be added
+  to the module rather than working around it in this repo.
+- Cast with the `castAs` operator (`value castAs int`, `value castAs
+  String[]`), never the `javaCast()` BIF. BoxLang already auto-casts
+  arguments and interpolates strings, so only cast when a call is genuinely
+  ambiguous (for example a Java class with overloaded constructors where a
+  number could match more than one).
 - Avoid private helper names that collide with built-in functions, and qualify
   helper calls when name resolution could be ambiguous.
 - An arrow closure has its own `arguments` scope. Capture outer arguments in a

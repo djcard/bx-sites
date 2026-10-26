@@ -11,7 +11,7 @@ tags: [anleitungen, einrichtung]
 ## Voraussetzung: BoxLang installieren
 
 Alles Folgende setzt voraus, dass die BoxLang-Laufzeitumgebung selbst
-bereits auf deinem Rechner vorhanden ist - `install-bx-module` ist
+(1.18 oder neuer) bereits auf deinem Rechner vorhanden ist - `install-bx-module` ist
 BoxLangs eigener CLI-Befehl zum Installieren eines Moduls in eine
 bestehende Installation, und CommandBox' `box install` benötigt ebenfalls
 eine bereits vorhandene BoxLang-Engine, gegen die es laufen kann. Falls du
@@ -75,6 +75,10 @@ boxlang bxSites <verb> [options]
 ```
 
 Der Rest dieser Anleitung verwendet die Kurzform.
+
+### Tab-Vervollständigung
+
+Vervollständigungs-Skripte für bash, fish und PowerShell gehören zum Modul. Die einzeilige Installation steht unter [Tab-Vervollständigung](cli-reference.md#tab-vervollständigung).
 
 ## Ein Projekt aufsetzen
 

@@ -75,7 +75,12 @@ class extends="testbox.system.BaseSpec" {
 			} );
 
 			it( "loads docs when the docs path contains Windows-style backslashes", function() {
-				var dir = newDocsDir() & "/C:\sites\published\presentations\bxai-chat\my-docs/docs";
+				// Off Windows, a folder whose own name holds backslashes and a
+				// drive-like prefix; on Windows (where ":" can't be in a
+				// folder name) a real path written with backslashes.
+				var dir = server.os.name.findNoCase( "windows" )
+					? newDocsDir().replace( "/", char( 92 ), "all" ) & char( 92 ) & "my-docs" & char( 92 ) & "docs"
+					: newDocsDir() & "/C:\sites\published\presentations\bxai-chat\my-docs/docs";
 				directoryCreate( dir, true, true );
 				fileWrite( dir & "/index.md", "Welcome" );
 
@@ -235,6 +240,23 @@ class extends="testbox.system.BaseSpec" {
 
 				expect( pages.len() ).toBe( 1 );
 				expect( pages[ 1 ].relativePath ).toBe( "real.md" );
+			} );
+
+			it( "skips any dot-prefixed folder or file at any depth (.claude/, .cursor/, .agents/, .notes.md)", function() {
+				var dir = newDocsDir();
+				directoryCreate( dir & "/.claude/skills/bx-sites", true, true );
+				fileWrite( dir & "/.claude/skills/bx-sites/SKILL.md", "excluded" );
+				directoryCreate( dir & "/.cursor/rules", true, true );
+				fileWrite( dir & "/.cursor/rules/style.md", "excluded" );
+				directoryCreate( dir & "/guides/.drafts", true, true );
+				fileWrite( dir & "/guides/.drafts/wip.md", "excluded" );
+				fileWrite( dir & "/guides/.notes.md", "excluded" );
+				fileWrite( dir & "/guides/setup.md", "Included" );
+
+				var pages = loader.load( dir );
+
+				expect( pages.len() ).toBe( 1 );
+				expect( pages[ 1 ].relativePath ).toBe( "guides/setup.md" );
 			} );
 
 			it( "does NOT exclude README.md/LICENSE.md/CHANGELOG.md by default - a project can have real content at that name", function() {

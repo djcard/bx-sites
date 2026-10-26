@@ -40,6 +40,20 @@ la convenzione `docs/`-o-`src/`. `new` genera sempre lo scheletro di
 | `-h`, `--help` | Mostra l'utilizzo ed esce |
 | `-v`, `--version` | Mostra la versione del modulo ed esce |
 
+I flag di percorso (`--source`, `--path`, `--dest`, `--output`) accettano un percorso assoluto, un percorso `~/` nella cartella home o un percorso relativo alla radice del progetto.
+
+## Completamento con Tab
+
+Il modulo include script di completamento per bash, fish e PowerShell nella cartella `completions/`. Completano i verbi (`page:new`, o scritto come `page new`), i flag e i valori dei flag con un insieme fisso (`--theme=`, `--target=`, `--from=`, ...).
+
+| Shell | Installazione |
+|---|---|
+| bash | Automatica con `install-bx-module bx-sites`, che legge `boxlang.completions` dal `box.json` del modulo. Altrimenti aggiungi `source <cartella del modulo>/completions/bxSites.bash` a `~/.bashrc`. |
+| fish | `cp <cartella del modulo>/completions/bxSites.fish ~/.config/fish/completions/` |
+| PowerShell | Aggiungi `. <cartella del modulo>/completions/bxSites.ps1` al tuo `$PROFILE`. |
+
+Gli script sono generati dalla tabella dei verbi in `ModuleConfig.bx`. Dopo aver cambiato un verbo, rigenerali con `boxlang tools/generate-completions.bxs`; uno spec fallisce se gli script versionati sono obsoleti.
+
 ## `new`
 
 Genera lo scheletro di un progetto di documentazione.
@@ -108,10 +122,13 @@ bxSites search-index
 ## `clean`
 
 Rimuove `site/` e qualsiasi cache di compilazione, lasciando intatti
-`docs/` e la configurazione del sito.
+`docs/` e la configurazione del sito. Chiede conferma prima di eliminare;
+`--force` salta la domanda (necessario in CI e negli script, dove nessuno
+può rispondere).
 
 ```bash frame="terminal" title="Terminal"
 bxSites clean
+bxSites clean --force
 ```
 
 ## `gh-deploy`
@@ -153,7 +170,7 @@ bxSites deploy [--verbose]
 Tre modi per invocarlo:
 
 1. **`--entry=<nome>`** - smista verso qualunque target dichiarato da un
-   file `deployments/<nome>.json` (vedi sotto). Ogni target eccetto
+   file `deployments/<nome>.yaml` (vedi sotto). Ogni target eccetto
    `local`/`github-pages` lo richiede - c'è più configurazione di quanta
    ne possano ragionevolmente portare un paio di flag.
 2. **`--target=<nome>` con i propri flag** - una scorciatoia a soli flag
@@ -161,10 +178,10 @@ Tre modi per invocarlo:
    cartella `deployments/`: `local` (`--destination=<percorso>`) e
    `github-pages` (`[--branch] [--remote] [--message]`, ogni campo
    opzionale, con gli stessi valori predefiniti di `gh-deploy`).
-3. **Nessun flag - distribuisce tutto.** Ogni voce `deployments/*.json`
+3. **Nessun flag - distribuisce tutto.** Ogni voce `deployments/*`
    viene distribuita a turno, a partire da un'unica build condivisa (il
    sito viene compilato una sola volta, non una volta per target).
-   Richiede che esista almeno una voce `deployments/*.json`. Il
+   Richiede che esista almeno una voce `deployments/*`. Il
    fallimento di un target non ferma gli altri - ogni voce viene tentata,
    e il comando esce con un codice diverso da zero solo se almeno una di
    esse è fallita; il riepilogo finale riporta quante sono andate a buon
@@ -176,7 +193,7 @@ su una riga.
 
 Vedi [Distribuzione](guides/deployment.md) per la struttura di
 configurazione propria di ogni target e un esempio reale di
-`deployments/*.json` per ciascuno.
+`deployments/*` per ciascuno.
 
 ## `package`
 
@@ -209,6 +226,7 @@ bxSites migrate --source=/percorso/dell/export-notion --from=notion
 
 - `--source` (obbligatorio) - percorso alla cartella radice dell'export/progetto (`SUMMARY.md` per `gitbook`, `mkdocs.yml` per `mkdocs`), oppure un file `.zip` (`markdown-zip`; `notion` accetta sia uno `.zip` sia una cartella già estratta)
 - `--from` - `gitbook` (predefinito), `mkdocs`, `markdown-zip` o `notion`
+- `--force` - salta la conferma. Se `docs/` contiene già dei file (o esiste `bxsites.yaml`, con `mkdocs`), `migrate` chiede prima di poterli sovrascrivere
 
 ### `--from=gitbook` (predefinito)
 
@@ -476,6 +494,26 @@ Fallisce invece di sovrascrivere un `.theme/` già esistente. Vedi
 [Temi](guides/themes.md) per il contratto di sovrascrittura
 (`layout.bxm` + `page.bxm`).
 
+## `layout:new`
+
+Genera un layout con nome copiando un template del tema attivo nella
+cartella `.overrides/<theme>/` del progetto, pronto da modificare e da
+selezionare con `layout: <name>` nel frontmatter di una pagina o con una
+[regola `layouts:`](guides/themes.md#layout-impliciti).
+
+```bash title="Utilizzo"
+bxSites layout:new --name=landing [--from=layout] [--theme=bootstrap]
+```
+
+- `--name` (obbligatorio) - il nome del nuovo layout, un nome di template semplice come `landing`
+- `--from` - quale template del tema copiare, senza estensione; il valore predefinito è `layout` (il guscio esterno)
+- `--theme` - il tema da cui copiare; il valore predefinito è `theme.name` del progetto
+
+Fallisce invece di sovrascrivere un file già esistente, ed elenca i
+template disponibili quando `--from` ne nomina uno che il tema non ha. Un
+progetto con un `.theme/` piatto completo ottiene invece il file lì. Vedi
+[Sovrascritture del progetto](guides/themes.md#sovrascritture-del-progetto).
+
 ## `install:theme`
 
 Scarica un tema pubblicato da ForgeBox nel proprio `.themes/<name>/`,
@@ -529,15 +567,17 @@ dall'ecosistema di un altro generatore di siti statici
 porting senza perdite in un solo comando.
 
 ```bash title="Utilizzo"
-bxSites theme:import --source=mkdocs --path=/path/to/theme --name=my-imported-theme
+bxSites theme:import --source=mkdocs --path=/path/to/theme --name=my-imported-theme [--force]
 ```
 
 - `--source` (obbligatorio) - `mkdocs`, `jekyll`, o `hugo`
 - `--path` (obbligatorio) - la cartella radice propria del tema sorgente
 - `--name` (obbligatorio) - il nome di destinazione, scritto in `.themes/<name>/`
 
-Rieseguire il comando con lo stesso `--name` è sicuro - `layout.bxm`/
-`page.bxm` vengono sovrascritti e qualsiasi cartella di asset appena
+- `--force` - salta la conferma prima di sovrascrivere
+
+Rieseguire il comando con lo stesso `--name` chiede prima conferma (o usa `--force`),
+poi `layout.bxm`/`page.bxm` vengono sovrascritti e qualsiasi cartella di asset appena
 trovata viene unita. Vedi [Importare un tema](guides/theme-import.md)
 per sapere esattamente cosa viene tradotto e cosa no, e cosa controllare
 in seguito.

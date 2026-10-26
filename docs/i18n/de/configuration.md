@@ -213,7 +213,7 @@ keiner von beiden, schlägt der Build laut fehl, statt zu raten.
 `bxSites new` schreibt diesen Schlüssel immer explizit, sodass ein
 gescaffoldetes Projekt nie mehrdeutig ist. Siehe
 [Content-Quelle](guides/content-source.md) für das vollständige Bild,
-einschließlich der `.theme`/`.themes`-Überschreibungen, die innerhalb
+einschließlich der `.theme`/`.themes`/`.overrides`-Ordner, die innerhalb
 dieses Ordners leben, sowie die Anleitung
 [Multi-Domain-Monorepo](guides/multi-domain.md) für den Betrieb mehrerer
 unabhängiger Projekt-Wurzeln aus einem einzigen Repository.
@@ -222,7 +222,7 @@ unabhängiger Projekt-Wurzeln aus einem einzigen Repository.
 
 Zusätzliche Datei-/Ordnernamen, die aus dem Build ausgeschlossen werden,
 zusätzlich zu den traditionellen, die bxSites ohnehin immer ausschließt
-(`.git`, `.github`, `node_modules`, `boxlang_modules`, `site`, `.theme`,
+(jeder Ordner und jede Datei mit führendem Punkt wie `.git` oder `.claude`, `node_modules`, `boxlang_modules`, `site`, `.theme`,
 `.themes` und die eigene Konfigurationsdatei dieses Projekts). Wird auf
 dieselbe Weise abgeglichen - ein bloßer Name an der Wurzel von `source`,
 oder ein Name irgendwo darunter über ein führendes, `/`-freies
@@ -289,13 +289,41 @@ byte-für-byte durchgereicht statt der generierten, bei jedem Build - der
 `robots`-Schlüssel oben wird vollständig ignoriert, sobald diese Datei
 existiert.
 
+## `layouts`
+
+Implizite Layouts: Weise jeder Seite, deren Pfad auf einen Glob passt, ein
+Layout zu, ohne `layout:` im Frontmatter jeder Seite zu wiederholen. Die
+Regeln werden der Reihe nach geprüft und der erste Treffer gewinnt; das
+eigene `layout:`-Frontmatter einer Seite gewinnt immer gegenüber einer Regel.
+
+```yaml title="bxsites.yaml"
+layouts:
+  - layout: landing
+    match: ["marketing/**", "pricing.md"]
+  - layout: post
+    match: "blog/posts/**"
+```
+
+- `layout` - ein bloßer Template-Name wie `landing` (Buchstaben, Ziffern,
+  `-`, `_`)
+- `match` - ein Glob oder eine Liste von Globs, abgeglichen gegen den Pfad
+  der Seite relativ zum Content-Root
+
+Standardmäßig keine Regeln. Siehe
+[Implizite Layouts](guides/themes.md#implizite-layouts) für die Glob-Syntax.
+
 ## `theme`
 
 - `theme.name` - eines der integrierten Themes (`bootstrap`, `material`,
   `tailwind`, `docsy`, `slate`, `docusaurus`, `justthedocs`, `vuepress`,
-  `gitbook`, `notion`) oder der Name eines eigenen Themes, das du über
-  einen `.theme/`-Ordner innerhalb des Content-Root bereitstellst (siehe
-  [Themes](guides/themes.md))
+  `gitbook`, `notion`) oder der Name eines installierten Themes, oder ein
+  beliebiger Name, wenn du ein vollständiges Theme über einen
+  `.theme/`-Ordner innerhalb des Content-Root bereitstellst (siehe
+  [Themes](guides/themes.md)). Er muss ein Slug sein: Kleinbuchstaben,
+  Ziffern und Bindestriche, derselbe Wert, den BoxLangs `slugify()`
+  zurückgibt. Die Änderungen eines Projekts an einem Theme leben in
+  `.overrides/<theme.name>/` (siehe
+  [Projekt-Überschreibungen](guides/themes.md#projekt-überschreibungen))
 - `theme.logo` - Pfad/URL zu einem Bild, das neben dem Website-Namen in der
   Kopfzeilen-Marke angezeigt wird (anstelle des standardmäßigen
   "⚡"-Symbols) - ein relativer Pfad (z. B. `"assets/logo.svg"`, aufgelöst
@@ -389,6 +417,25 @@ existiert.
     === "JSON"
         ```json
         { "theme": { "options": { "pageMetaPosition": "top" } } }
+        ```
+  - `theme.options.navAccentLine` - `true` (Standard) zeichnet eine
+    dünne vertikale Linie neben einem verschachtelten Abschnitt der
+    Seitenleisten-Navigation, die dessen untergeordnete Einträge visuell
+    mit dem übergeordneten Abschnitt verbindet. `false` schaltet sie aus.
+  - `theme.options.navAccentLineColor` - eine Hex-Farbe (3- oder
+    6-stellig), die die Farbe der Navigations-Akzentlinie überschreibt.
+    Bleibt sie unbesetzt, greift `theme.options.accentColor`/
+    `accentColorDark`, falls gesetzt, sonst die native Akzentfarbe des
+    Themes - nur relevant, wenn `navAccentLine` aktiv ist.
+
+    === "YAML"
+        ```yaml
+        theme: { options: { navAccentLine: true, navAccentLineColor: "#2563eb" } }
+        ```
+
+    === "JSON"
+        ```json
+        { "theme": { "options": { "navAccentLine": true, "navAccentLineColor": "#2563eb" } } }
         ```
 
 ## `search`
@@ -970,15 +1017,29 @@ einschließlich dessen, was bewusst nicht abgedeckt wird (AVIF, animierte
 GIFs, SVGs).
 
 - `assets.fingerprint` - `true` (Standard). Benennt jede erzeugte
-  Bildvariante und jedes CSS/JS-Bundle nach einem Inhalts-Hash (z. B.
-  `screenshot-800w.a3f9c2e1.webp`, `bundle.a3f9c2e1.css`), sodass sie mit
-  sicheren, weit in der Zukunft liegenden Cache-Headern ausgeliefert
-  werden können - der Build eines Projekts ändert den eigenen Dateinamen
-  nur, wenn sich dessen Inhalt tatsächlich ändert. Benennt die eigenen
-  Originaldateien eines Projekts unter `docs/assets/` nicht um - nur von
-  der Pipeline erzeugte Ausgabe wird fingerprinted, sodass alles andere,
-  was ein Asset über seinen einfachen Dateinamen referenziert (eine
-  `::: file`-Download-Card, ein roher Markdown-Link), unverändert
+  Bildvariante, jedes CSS/JS-Bundle und jede Top-Level-CSS/JS-Datei direkt
+  innerhalb des eigenen `assets/`-Ordners des aktiven Themes oder des
+  eigenen gemeinsamen `assets/`-Ordners dieses Moduls nach einem
+  Inhalts-Hash (z. B. `screenshot-800w.a3f9c2e1.webp`,
+  `bundle.a3f9c2e1.css`, `style.a3f9c2e1.css`, `copy-code.a3f9c2e1.js`),
+  sodass sie mit sicheren, weit in der Zukunft liegenden Cache-Headern
+  ausgeliefert werden können - der Build eines Projekts ändert den
+  eigenen Dateinamen nur, wenn sich dessen Inhalt tatsächlich ändert. Das
+  bedeutet, dass ein Theme-Update - ein Upgrade eines integrierten
+  Themes, oder ein eigener Autor, der das CSS/JS seines eigenen Themes
+  bearbeitet - beim nächsten Deploy automatisch den Browser-Cache jedes
+  Besuchers invalidiert, ganz ohne manuellen Versionierungsschritt,
+  solange das eigene `layout.bxm` des Themes diese Datei über
+  `themeAssetUrl()`/`moduleAssetUrl()` statt über einen fest codierten
+  Pfad einbindet - siehe
+  [Themes](guides/themes.md#ein-theme-von-grund-auf-schreiben). Benennt
+  die eigenen Originaldateien eines Projekts unter `docs/assets/` nicht
+  um, ebenso wenig wie alles innerhalb eines Unterordners des eigenen
+  `assets/`-Ordners eines Themes - nur von der Pipeline erzeugte Ausgabe
+  und die eigenen Top-Level-Dateien eines Themes werden fingerprinted,
+  sodass alles andere, was ein Asset über seinen einfachen Dateinamen
+  referenziert (eine `::: file`-Download-Card, ein roher Markdown-Link,
+  das eigene `@font-face`/`@import` eines Themes), unverändert
   weiterfunktioniert.
 - `assets.bundle` - `true` (Standard). Verkettet `extraCss`/`extraJs` je
   zu einer fingerprinted Datei - reines BoxLang/JVM, keine

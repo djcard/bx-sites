@@ -20,6 +20,11 @@
  */
 class {
 
+	static {
+		// Warnings already printed this process (see warnOnce()).
+		warned = {}
+	}
+
 	/**
 	 * @page A page struct with an added `contentHtml` key (already defaulted by ThemeRenderer.renderPage())
 	 * @nav The site's nav tree
@@ -38,6 +43,12 @@ class {
 	 * @stringsResolver ThemeRenderer's own StringsResolver instance - stateless/pure (no per-render data), so safe to hand across concurrent renders unchanged; a theme's own `.format()` calls (e.g. `renderNavList()`'s `toggleSection` label) need the resolver itself, not just its already-resolved `strings` output
 	 * @data DataLoader.load()'s own output, bound bare as `variables.data`
 	 * @functions FunctionsLoader.load()'s own output - each `$`-prefixed magic function bound directly into this scope, bare-callable from the included templates
+	 *
+	 * Also binds `themeAssetUrl()`/`moduleAssetUrl()`/`renderVersionSwitcher()` -
+	 * see their own inline docblocks below - bare-callable from the included
+	 * templates the same way, reading `config.theme.assetUrls`/
+	 * `config.moduleAssetUrls` (both from `BuildPipeline.buildTopLevelAssetManifest()`)
+	 * and `versions`/`currentVersion` (`BuildPipeline.buildVersionsList()`) respectively.
 	 *
 	 * @return The rendered page HTML
 	 */
@@ -58,7 +69,8 @@ class {
 		required struct strings,
 		required any stringsResolver,
 		required struct data,
-		struct functions = {}
+		struct functions = {},
+		struct themeManifest = {}
 	) {
 		variables.page              = arguments.page
 		variables.nav                = arguments.nav
@@ -76,6 +88,78 @@ class {
 		variables.data                = arguments.data
 		variables.layoutFile         = arguments.layoutFile
 		variables.bodyFile           = arguments.bodyFile
+		variables.themeManifest      = arguments.themeManifest
+
+		// The cache-busting "mixin" every theme's layout (built-in or
+		// custom) renders its own `<link>`/`<script>` tags through, instead
+		// of hand-writing `variables.basePath & "assets/theme/style.css"`
+		// (or similar) and hoping to remember the one-off
+		// `variables.siteConfig.theme.styleUrl ?: '...'` fallback idiom this
+		// replaces. Both close over THIS instance's own `variables` scope
+		// (plain member closures, not arrow-function callbacks, so there's
+		// no separate `arguments`-capture gotcha to work around here) rather
+		// than the constructor arguments directly, so they keep working
+		// exactly the same if a future change here starts re-using this
+		// same instance for more than one render.
+		//
+		// `siteConfig.theme.assetUrls`/`siteConfig.moduleAssetUrls`
+		// (BuildPipeline.bx's `buildTopLevelAssetManifest()`) are only ever
+		// populated for a file's PLAIN name - a path with no directory
+		// segment - so a lookup miss (fingerprinting off, the project
+		// predates this manifest, or the caller named a file that lives in
+		// a subdirectory, e.g. `vendor/bootstrap/bootstrap.min.css`) falls
+		// back to today's exact unhashed path, same as calling this on a
+		// file that simply doesn't exist yet.
+		variables.themeAssetUrl = function( required string fileName ) {
+			var urls = variables.siteConfig.theme.assetUrls ?: {}
+			return variables.basePath & ( urls[ arguments.fileName ] ?: ( "assets/theme/" & arguments.fileName ) )
+		}
+		variables.moduleAssetUrl = function( required string fileName ) {
+			var urls = variables.siteConfig.moduleAssetUrls ?: {}
+			return variables.basePath & ( urls[ arguments.fileName ] ?: ( "assets/" & arguments.fileName ) )
+		}
+
+		// The version switcher, centralized the same way as the two asset
+		// helpers above - every theme (built-in or custom) gets the
+		// grouping/"(Current)" labeling for free instead of re-implementing
+		// this exact loop, which is how all 10 built-in themes had it before
+		// this (byte-identical in 9 of them). A theme that wants fully
+		// custom markup is still free to loop `variables.versions` itself
+		// instead of calling this - nothing requires it.
+		//
+		// Grouping is driven by each entry's own `kind` (BuildPipeline.bx's
+		// `buildVersionsList()`) - `"current"` gets a trailing
+		// `(<versionCurrent string>)` label, and the first `"next"` entry
+		// (there is ever at most one) gets a disabled divider option
+		// rendered immediately before it, visually separating it from the
+		// released versions above - matching how a "stable release(s) then
+		// an upcoming one" switcher is normally laid out elsewhere, rather
+		// than squeezing "Next" in right after the current version.
+		//
+		// Escapes a URL the same minimal way icons.bxm's own
+		// `bxsitesUrlAttr()` does (only `&`/`"`/`<`, never `/`) rather than
+		// calling that function directly - this helper must keep working
+		// even for a from-scratch custom theme that never
+		// `<bx:include template="#variables.moduleAssetsDir#/icons.bxm">`s
+		// at all.
+		variables.renderVersionSwitcher = function( required array versions, required string currentVersion, string extraClass = "" ) {
+			var classAttr = trim( "version-switcher " & arguments.extraClass )
+			var html = '<select class="' & encodeForHTML( classAttr ) & '" onchange="location.href=this.value" aria-label="' & encodeForHTML( variables.strings.version ) & '">'
+			var sawNext = false
+			for ( var v in arguments.versions ) {
+				var kind = v.kind ?: ""
+				if ( kind == "next" && !sawNext ) {
+					html &= '<option disabled>──────────</option>'
+					sawNext = true
+				}
+				var label = v.label & ( kind == "current" ? ( " (" & variables.strings.versionCurrent & ")" ) : "" )
+				var urlAttr = v.url.replace( "&", "&amp;", "all" ).replace( '"', "&quot;", "all" ).replace( "<", "&lt;", "all" )
+				var selected = v.label == arguments.currentVersion ? " selected" : ""
+				html &= '<option value="' & urlAttr & '"' & selected & '>' & encodeForHTML( label ) & '</option>'
+			}
+			html &= '</select>'
+			return html
+		}
 
 		// Same bare `$`-function bind-through ThemeRenderer.renderPage() used
 		// to do directly on its own (shared) scope - FunctionsLoader.bx's own
@@ -90,6 +174,62 @@ class {
 			include variables.themeDir & "/" & variables.layoutFile
 		}
 		return html
+	}
+
+
+	/**
+	 * Renders the active theme's `slots/<name>.bxm` and returns its HTML, or
+	 * an empty string when the theme has no such file. A theme's own
+	 * `layout.bxm` calls this where a slot belongs, e.g.
+	 * `#renderSlot( "footer" )#`. A project's `.overrides/<theme>/slots/<name>.bxm`
+	 * replaces the theme's file of the same name (ThemeRenderer.applyOverrides()),
+	 * so this never needs to know which of the two it is rendering.
+	 *
+	 * The slot file sees the same variables a layout does (`page`, `nav`,
+	 * `siteConfig`, `basePath`, `data`, ...).
+	 *
+	 * A slot name the theme's `theme.json` does not list prints one warning
+	 * per build and still renders if a file exists. A theme with no manifest
+	 * is never warned about.
+	 *
+	 * @name The slot name: lowercase letters, digits and hyphens
+	 */
+	string function renderSlot( required string name ) {
+		var manifest = variables.themeManifest ?: {}
+		if ( ( manifest.exists ?: false ) && !manifest.slots.contains( arguments.name ) ) {
+			warnOnce( "slot:" & variables.themeDir & ":" & arguments.name, "Warning: theme [#manifest.slug.len() ? manifest.slug : variables.themeDir#] renders slot [#arguments.name#] but does not list it in theme.json" )
+		}
+
+		if ( !reFind( "^[a-z][a-z0-9-]*$", arguments.name ) ) {
+			warnOnce( "slotname:" & arguments.name, "Warning: renderSlot() name [#arguments.name#] must be lowercase letters, digits and hyphens; nothing rendered" )
+			return ""
+		}
+
+		var slotFile = variables.themeDir & "/slots/" & arguments.name & ".bxm"
+		if ( !fileExists( slotFile ) ) {
+			return ""
+		}
+
+		var html = ""
+		bx:savecontent variable="html" {
+			include slotFile
+		}
+		return html
+	}
+
+	/**
+	 * Prints a build warning the first time `key` is seen in this process.
+	 * A slot is rendered once per page, so without this a missing slot would
+	 * repeat for every page of the site.
+	 *
+	 * @key Identifies the warning
+	 * @message The text to print
+	 */
+	private void function warnOnce( required string key, required string message ) {
+		if ( !static.warned.keyExists( arguments.key ) ) {
+			static.warned[ arguments.key ] = true
+			println( arguments.message )
+		}
 	}
 
 }

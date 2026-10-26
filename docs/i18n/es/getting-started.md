@@ -10,8 +10,8 @@ tags: [guías, configuración]
 
 ## Requisito previo: instalar BoxLang
 
-Todo lo que sigue asume que el runtime de BoxLang ya está instalado en tu
-máquina - `install-bx-module` es el propio CLI de BoxLang instalando un
+Todo lo que sigue asume que el runtime de BoxLang (1.18 o posterior) ya
+está instalado en tu máquina - `install-bx-module` es el propio CLI de BoxLang instalando un
 módulo dentro de una instalación existente, y `box install` de CommandBox
 también necesita un motor de BoxLang ya presente contra el cual ejecutarse.
 Si aún no tienes BoxLang, instálalo primero con cualquiera de estas dos
@@ -75,6 +75,10 @@ boxlang bxSites <verb> [options]
 ```
 
 El resto de esta guía usa la forma corta.
+
+### Autocompletado con Tab
+
+El módulo incluye scripts de autocompletado para bash, fish y PowerShell. Consulta [Autocompletado con Tab](cli-reference.md#autocompletado-con-tab) para la instalación de cada uno.
 
 ## Crear la estructura de un proyecto
 

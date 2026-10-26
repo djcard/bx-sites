@@ -1,7 +1,7 @@
 /**
  * Copies the already-built `site/` directory to an arbitrary destination -
  * a shared drive, an artifact folder, a staging directory another tool
- * picks up from, etc. The only target that never needs a `deployments/*.json`
+ * picks up from, etc. The only target that never needs a `deployments/*`
  * entry at all (`deploy --target=local --destination=...`, or that flag
  * with no `--target` given, since it's also the default).
  *
@@ -55,9 +55,7 @@ class implements="models.deploy.IDeploymentTarget@bxsites" {
 	 * @projectRoot Absolute path to the project root - the base a relative `destination` resolves against
 	 */
 	private string function resolveDestination( required string destination, required string projectRoot ) {
-		var isAbsolute = arguments.destination.left( 1 ) == "/" || arguments.destination.reFind( "^[A-Za-z]:[\/\\]" )
-		var absolute = isAbsolute ? arguments.destination : arguments.projectRoot & "/" & arguments.destination
-		return absolute.reReplace( "[\/]+$", "" )
+		return new "models.build.PathRelativizer@bxsites"().resolve( arguments.projectRoot, arguments.destination ).reReplace( "[\\\/]+$", "" )
 	}
 
 }

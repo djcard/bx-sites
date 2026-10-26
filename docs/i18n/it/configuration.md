@@ -210,7 +210,7 @@ non esiste neppure una delle due, il build fallisce in modo esplicito
 invece di indovinare. `bxSites new` scrive sempre questa chiave in modo
 esplicito, così un progetto appena generato non è mai ambiguo su dove
 vive il suo contenuto. Vedi [Origine del contenuto](guides/content-source.md)
-per il quadro completo, incluse le sovrascritture `.theme`/`.themes` che
+per il quadro completo, incluse le cartelle `.theme`/`.themes`/`.overrides` che
 vivono dentro questa cartella, e la guida
 [Monorepo multi-dominio](guides/multi-domain.md) per eseguire più project
 root indipendenti da un solo repository.
@@ -218,7 +218,7 @@ root indipendenti da un solo repository.
 ## `exclude`
 
 Nomi extra di file/cartelle da escludere dal build, oltre a quelli
-tradizionali che bxSites esclude sempre (`.git`, `.github`,
+tradizionali che bxSites esclude sempre (qualsiasi cartella o file che inizia con un punto come `.git` o `.claude`,
 `node_modules`, `boxlang_modules`, `site`, `.theme`, `.themes`, e il file
 di configurazione proprio di questo progetto). Vengono confrontati nello
 stesso modo - un nome nudo alla radice di `source`, oppure un nome
@@ -284,12 +284,41 @@ Scritto alla radice del sito, ma solo quando `baseURL` è un URL completo
 senso. Elenca ogni pagina non nascosta secondo il protocollo
 [sitemaps.org](https://www.sitemaps.org/).
 
+## `layouts`
+
+Layout impliciti: assegna un layout a ogni pagina il cui percorso
+corrisponde a un glob, senza ripetere `layout:` nel frontmatter di ogni
+pagina. Le regole vengono provate in ordine e vince la prima
+corrispondenza; il frontmatter `layout:` proprio di una pagina vince
+sempre su una regola.
+
+```yaml title="bxsites.yaml"
+layouts:
+  - layout: landing
+    match: ["marketing/**", "pricing.md"]
+  - layout: post
+    match: "blog/posts/**"
+```
+
+- `layout` - un nome di template semplice come `landing` (lettere, cifre,
+  `-`, `_`)
+- `match` - un glob, o una lista di glob, confrontato con il percorso della
+  pagina relativo alla content root
+
+Per default non ci sono regole. Vedi
+[Layout impliciti](guides/themes.md#layout-impliciti) per la sintassi dei
+glob.
+
 ## `theme`
 
 - `theme.name` - uno dei temi integrati (`bootstrap`, `material`,
-  `tailwind`), oppure il nome di un tema personalizzato che fornisci tu
-  tramite una cartella `.theme/` dentro la content root (vedi
-  [Temi](guides/themes.md))
+  `tailwind`, ...), oppure il nome di un tema installato, oppure qualsiasi
+  nome quando fornisci un tema completo tramite una cartella `.theme/`
+  dentro la content root (vedi [Temi](guides/themes.md)). Deve essere uno
+  slug: lettere minuscole, cifre e trattini, lo stesso valore che
+  `slugify()` di BoxLang restituisce. Le modifiche di un progetto a un tema
+  vivono in `.overrides/<theme.name>/` (vedi [Sovrascritture del
+  progetto](guides/themes.md#sovrascritture-del-progetto))
 - `theme.logo` - percorso/URL a un'immagine mostrata accanto al nome del
   sito nel marchio dell'header (al posto del glifo predefinito "⚡") - un
   percorso relativo (ad es. `"assets/logo.svg"`, risolto rispetto a
@@ -337,6 +366,25 @@ senso. Elenca ogni pagina non nascosta secondo il protocollo
     === "JSON"
         ```json
         { "theme": { "options": { "navCollapsible": true, "navExpandAll": false } } }
+        ```
+  - `theme.options.navAccentLine` - `true` (il valore predefinito) disegna
+    una sottile linea verticale accanto a una sezione nidificata della nav
+    laterale, collegando visivamente i suoi elementi figli alla sezione
+    padre. `false` la disattiva.
+  - `theme.options.navAccentLineColor` - un colore esadecimale (3 o 6
+    cifre) che sovrascrive il colore della linea di accento della nav. Se
+    non impostato, usa `theme.options.accentColor`/`accentColorDark`
+    quando configurato, altrimenti il colore di accento nativo del tema -
+    rilevante solo quando `navAccentLine` è attivo.
+
+    === "YAML"
+        ```yaml
+        theme: { options: { navAccentLine: true, navAccentLineColor: "#2563eb" } }
+        ```
+
+    === "JSON"
+        ```json
+        { "theme": { "options": { "navAccentLine": true, "navAccentLineColor": "#2563eb" } } }
         ```
 
 ## `search`
@@ -897,16 +945,29 @@ completo, incluso ciò che deliberatamente non è coperto (AVIF, GIF
 animate, SVG).
 
 - `assets.fingerprint` - `true` (il valore predefinito). Assegna un nome
-  basato sull'hash del contenuto a ogni variante di immagine generata e a
-  ogni bundle CSS/JS (ad es. `screenshot-800w.a3f9c2e1.webp`,
-  `bundle.a3f9c2e1.css`) così possono essere serviti con header di cache
-  sicuri a lunghissima scadenza - un build cambia il nome proprio del
-  file solo quando il suo contenuto cambia davvero. Non rinomina i file
-  originali di un progetto sotto `docs/assets/` - solo l'output generato
-  dalla pipeline ottiene l'impronta digitale, quindi qualsiasi altra cosa
-  che fa riferimento a un asset con il proprio nome file semplice (una
-  card di download `::: file`, un link markdown grezzo) continua a
-  funzionare senza modifiche.
+  basato sull'hash del contenuto a ogni variante di immagine generata, a
+  ogni bundle CSS/JS e a qualsiasi file CSS/JS di primo livello situato
+  direttamente dentro la cartella `assets/` propria del tema attivo o
+  dentro la cartella `assets/` condivisa propria di questo modulo (ad
+  es. `screenshot-800w.a3f9c2e1.webp`, `bundle.a3f9c2e1.css`,
+  `style.a3f9c2e1.css`, `copy-code.a3f9c2e1.js`) così possono essere
+  serviti con header di cache sicuri a lunghissima scadenza - un build
+  cambia il nome proprio di un file solo quando il suo contenuto cambia
+  davvero. Questo significa che un aggiornamento di tema - un upgrade di
+  un tema integrato, oppure un autore personalizzato che modifica il
+  CSS/JS del proprio tema - invalida automaticamente la cache del
+  browser di ogni visitatore al deploy successivo, senza alcun passaggio
+  manuale di versionamento, purché il `layout.bxm` proprio del tema
+  colleghi quel file tramite `themeAssetUrl()`/`moduleAssetUrl()` invece
+  di un percorso fisso - vedi
+  [Temi](guides/themes.md#scrivere-un-tema-da-zero). Non rinomina i file
+  originali di un progetto sotto `docs/assets/`, né nulla all'interno di
+  una sottocartella della cartella `assets/` propria di un tema - solo
+  l'output generato dalla pipeline e i file di primo livello propri di un
+  tema ottengono l'impronta digitale, quindi qualsiasi altra cosa che fa
+  riferimento a un asset con il proprio nome file semplice (una card di
+  download `::: file`, un link markdown grezzo, l'`@font-face`/`@import`
+  proprio di un tema) continua a funzionare senza modifiche.
 - `assets.bundle` - `true` (il valore predefinito). Concatena
   `extraCss`/`extraJs` in un unico file con impronta digitale ciascuno -
   puro BoxLang/JVM, nessuna toolchain Node/esbuild. Ricade sull'esatto

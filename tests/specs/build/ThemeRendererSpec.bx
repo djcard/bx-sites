@@ -115,6 +115,153 @@ class extends="testbox.system.BaseSpec" {
 				}
 			} );
 
+			describe( "themeAssetUrl()/moduleAssetUrl() (the cache-busting mixin)", function() {
+
+				it( "resolves to the fingerprinted URL when config.theme.assetUrls/moduleAssetUrls are populated", function() {
+					var root = newProjectRoot();
+					directoryCreate( root & "/docs/.theme", true, true );
+					fileWrite(
+						root & "/docs/.theme/layout.bxm",
+						'<bx:output>##themeAssetUrl( "style.css" )## | ##moduleAssetUrl( "copy-code.js" )##<bx:include template="##variables.themeDir##/##variables.bodyFile##"></bx:output>'
+					);
+					fileWrite( root & "/docs/.theme/page.bxm", "<bx:output>body</bx:output>" );
+					var themeDir = renderer.resolveThemeDir( "bootstrap", root );
+					var config = {
+						name  : "My Site",
+						theme : { assetUrls : { "style.css" : "assets/theme/style.deadbeef.css" } },
+						moduleAssetUrls : { "copy-code.js" : "assets/copy-code.cafef00d.js" }
+					};
+
+					var html = renderer.renderPage( { title : "P", contentHtml : "" }, [], config, themeDir );
+
+					expect( html ).toInclude( "assets/theme/style.deadbeef.css" );
+					expect( html ).toInclude( "assets/copy-code.cafef00d.js" );
+				} );
+
+				it( "falls back to the plain, unhashed path when no manifest entry exists for that file", function() {
+					var root = newProjectRoot();
+					directoryCreate( root & "/docs/.theme", true, true );
+					fileWrite(
+						root & "/docs/.theme/layout.bxm",
+						'<bx:output>##themeAssetUrl( "style.css" )## | ##moduleAssetUrl( "copy-code.js" )##<bx:include template="##variables.themeDir##/##variables.bodyFile##"></bx:output>'
+					);
+					fileWrite( root & "/docs/.theme/page.bxm", "<bx:output>body</bx:output>" );
+					var themeDir = renderer.resolveThemeDir( "bootstrap", root );
+
+					var html = renderer.renderPage( { title : "P", contentHtml : "" }, [], { name : "My Site" }, themeDir );
+
+					expect( html ).toInclude( "assets/theme/style.css" );
+					expect( html ).toInclude( "assets/copy-code.js" );
+				} );
+
+			} );
+
+			describe( "renderVersionSwitcher() (the version-switcher mixin)", function() {
+
+				private string function versionSwitcherHtml( required array versions, string currentVersion = "Latest" ) {
+					var root = newProjectRoot();
+					directoryCreate( root & "/docs/.theme", true, true );
+					fileWrite(
+						root & "/docs/.theme/layout.bxm",
+						'<bx:output>##renderVersionSwitcher( variables.versions, variables.currentVersion )##<bx:include template="##variables.themeDir##/##variables.bodyFile##"></bx:output>'
+					);
+					fileWrite( root & "/docs/.theme/page.bxm", "<bx:output>body</bx:output>" );
+					var themeDir = renderer.resolveThemeDir( "bootstrap", root );
+
+					return renderer.renderPage(
+						{ title : "P", contentHtml : "" }, [], { name : "My Site" }, themeDir,
+						"/", arguments.versions, arguments.currentVersion
+					);
+				}
+
+				it( "labels the kind:current entry with the (Current) suffix", function() {
+					var html = versionSwitcherHtml( [
+						{ label : "2.0.x", url : "/", kind : "current" },
+						{ label : "1.0.x", url : "/versions/1.0.x/", kind : "released" }
+					] );
+
+					expect( html ).toInclude( ">2.0.x &##x28;Current&##x29;<" );
+					expect( html ).toInclude( ">1.0.x<" );
+					expect( html ).notToInclude( "1.0.x &##x28;Current&##x29;" );
+				} );
+
+				it( "renders a disabled divider option right before the first kind:next entry, after every released version", function() {
+					var html = versionSwitcherHtml( [
+						{ label : "2.0.x", url : "/", kind : "current" },
+						{ label : "1.0.x", url : "/versions/1.0.x/", kind : "released" },
+						{ label : "Next", url : "/next/", kind : "next" }
+					] );
+
+					var dividerPos = html.find( "<option disabled>" );
+					var releasedPos = html.find( ">1.0.x<" );
+					var nextPos = html.find( ">Next<" );
+					expect( dividerPos ).toBeGT( 0 );
+					expect( dividerPos ).toBeGT( releasedPos );
+					expect( nextPos ).toBeGT( dividerPos );
+				} );
+
+				it( "marks the entry whose label matches currentVersion as selected", function() {
+					var html = versionSwitcherHtml(
+						[ { label : "2.0.x", url : "/", kind : "current" }, { label : "1.0.x", url : "/versions/1.0.x/", kind : "released" } ],
+						"1.0.x"
+					);
+
+					expect( html ).toInclude( 'value="/versions/1.0.x/" selected' );
+				} );
+
+			} );
+
+			describe( "findCacheBustingGaps() (the non-fatal theme authoring warning)", function() {
+
+				it( "flags a layout that hardcodes assets/theme/... instead of calling themeAssetUrl()", function() {
+					var root = newProjectRoot();
+					directoryCreate( root & "/docs/.theme", true, true );
+					fileWrite( root & "/docs/.theme/layout.bxm", '<link rel="stylesheet" href="/assets/theme/style.css">' );
+					fileWrite( root & "/docs/.theme/page.bxm", "<bx:output>body</bx:output>" );
+					makePublic( renderer, "findCacheBustingGaps" );
+
+					var gaps = renderer.findCacheBustingGaps( root & "/docs/.theme" );
+
+					expect( gaps.len() ).toBeGT( 0 );
+					expect( gaps[ 1 ] ).toInclude( "layout.bxm" );
+				} );
+
+				it( "flags a layout that hardcodes a known shared module script path instead of calling moduleAssetUrl()", function() {
+					var root = newProjectRoot();
+					directoryCreate( root & "/docs/.theme", true, true );
+					fileWrite( root & "/docs/.theme/layout.bxm", '<script src="/assets/copy-code.js" defer></script>' );
+					fileWrite( root & "/docs/.theme/page.bxm", "<bx:output>body</bx:output>" );
+					makePublic( renderer, "findCacheBustingGaps" );
+
+					var gaps = renderer.findCacheBustingGaps( root & "/docs/.theme" );
+
+					expect( gaps.len() ).toBeGT( 0 );
+				} );
+
+				it( "does not flag a layout using themeAssetUrl()/moduleAssetUrl(), or the older styleUrl back-compat idiom", function() {
+					var root = newProjectRoot();
+					directoryCreate( root & "/docs/.theme", true, true );
+					fileWrite(
+						root & "/docs/.theme/layout.bxm",
+						'<link rel="stylesheet" href="##themeAssetUrl( ''style.css'' )##"><script src="##moduleAssetUrl( ''copy-code.js'' )##"></script>'
+					);
+					fileWrite( root & "/docs/.theme/page.bxm", "<bx:output>body</bx:output>" );
+					makePublic( renderer, "findCacheBustingGaps" );
+
+					expect( renderer.findCacheBustingGaps( root & "/docs/.theme" ).len() ).toBe( 0 );
+				} );
+
+				it( "does not flag any of the built-in themes", function() {
+					var root = newProjectRoot();
+					makePublic( renderer, "findCacheBustingGaps" );
+					for ( var themeName in [ "bootstrap", "material", "tailwind", "docsy", "slate", "docusaurus", "justthedocs", "vuepress", "gitbook", "notion" ] ) {
+						var themeDir = renderer.resolveThemeDir( themeName, root );
+						expect( renderer.findCacheBustingGaps( themeDir ).len() ).toBe( 0 );
+					}
+				} );
+
+			} );
+
 			it( "renders a page through the built-in bootstrap theme, including title, nav and content", function() {
 				var root = newProjectRoot();
 				var themeDir = renderer.resolveThemeDir( "bootstrap", root );
@@ -197,6 +344,30 @@ class extends="testbox.system.BaseSpec" {
 				expect( html ).toInclude( 'href="/my-docs/index.html"' );
 				expect( html ).toInclude( 'href="/my-docs/assets/theme/style.css"' );
 				expect( html ).toInclude( 'href="/my-docs/"' );
+			} );
+
+			it( "keeps absolute nav URLs as is, escapes them, and neutralizes script URLs, across every built-in theme", function() {
+				var root = newProjectRoot();
+				var page = { title : "My Page", contentHtml : "<p>Body</p>" };
+				var nav = [
+					{ title : "My Page", url : "index.html", order : 1, children : [] },
+					{ title : "GitHub", url : "https://github.com/acme/docs?a=1&b=2", order : 2, children : [] },
+					{ title : "Mail", url : "mailto:docs@example.com", order : 3, children : [] },
+					{ title : "Evil", url : "JavaScript:alert(1)", order : 4, children : [] },
+					{ title : "Sneaky", url : "java" & char( 9 ) & "script:alert(1)", order : 5, children : [] }
+				];
+
+				for ( var themeName in [ "bootstrap", "material", "tailwind", "docsy", "slate", "docusaurus", "justthedocs", "vuepress", "gitbook", "notion" ] ) {
+					var themeDir = renderer.resolveThemeDir( themeName, root );
+					var html = renderer.renderPage( page, nav, { name : "My Site" }, themeDir, "/my-docs/" );
+
+					expect( html ).toInclude( 'href="/my-docs/index.html"' );
+					expect( html ).toInclude( 'href="https://github.com/acme/docs?a=1&amp;b=2"' );
+					expect( html ).toInclude( 'href="mailto:docs@example.com"' );
+					expect( html ).notToInclude( "/my-docs/https:" );
+					expect( html ).notToInclude( "/my-docs/mailto:" );
+					expect( html.findNoCase( "script:alert" ) ).toBe( 0, "#themeName# rendered a script URL" );
+				}
 			} );
 
 			it( "includes Alpine.js and a dark-mode toggle, and the copy-code script, in every built-in theme", function() {
@@ -428,6 +599,31 @@ class extends="testbox.system.BaseSpec" {
 					expect( html ).toInclude( "github.com" );
 					expect( html ).toInclude( "index.md" );
 					expect( html ).toInclude( "Edit this page" );
+				}
+			} );
+
+			it( "renders a Report an issue link in the page-meta row when [repo.url] is configured, and omits it when unconfigured, across every built-in theme", function() {
+				var root = newProjectRoot();
+				var page = {
+					title       : "My Page",
+					contentHtml : "<p>Body</p>",
+					canonicalUrl : "https://example.com/my-page/",
+					editUrl     : "https://github.com/acme/docs/edit/main/docs/index.md"
+				};
+				var nav = [ { title : "My Page", url : "index.html", order : 1, children : [] } ];
+				var onConfig = { name : "My Site", repo : { url : "https://github.com/acme/docs" } };
+				var offConfig = { name : "My Site" };
+
+				for ( var themeName in [ "bootstrap", "material", "tailwind", "docsy", "slate", "docusaurus", "justthedocs", "vuepress", "gitbook", "notion" ] ) {
+					var themeDir = renderer.resolveThemeDir( themeName, root );
+
+					var onHtml = renderer.renderPage( page, nav, onConfig, themeDir );
+					expect( onHtml ).toInclude( "Report an issue" );
+					expect( onHtml ).toInclude( "github.com/acme/docs/issues/new?title=" );
+
+					var offHtml = renderer.renderPage( page, nav, offConfig, themeDir );
+					expect( offHtml ).notToInclude( "Report an issue" );
+					expect( offHtml ).notToInclude( "issues/new?title=" );
 				}
 			} );
 
