@@ -214,7 +214,6 @@ class {
 				savedServerJson=fileRead(siteDir & "/server.json");
 			}
 			var allFiles=directorylist(siteDir);
-			println(allFiles)
 			allFiles.each((item)=>{
 				if(fileExists(item)){
 					fileDelete(item);
