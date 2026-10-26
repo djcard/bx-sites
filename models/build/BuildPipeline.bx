@@ -210,7 +210,6 @@ class {
 
 		if ( directoryExists( siteDir ) ) {
 			if(fileExists(siteDir & "/server.json")){
-				println("I NEED TO SAVE THE JSON!")
 				savedServerJson=fileRead(siteDir & "/server.json");
 			}
 			var allFiles=directorylist(siteDir);
